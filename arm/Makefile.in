@@ -19,6 +19,9 @@ DC_ARM7NM=@ARM_NM@
 DC_ARM7CFLAGS=@ARM_CFLAGS@
 DC_ARM7AFLAGS=@ARM_AFLAGS@
 
+# DC99 rebuild: the AICA cpu is an ARM7DI (no thumb, no "bx"): plain ARMv4 code only.
+DC99_ARM=-march=armv4 -marm -ffreestanding -fno-builtin -w
+
 all: stream.drv
 
 aica_fw.h: stream.drv
@@ -34,10 +37,10 @@ aica_fw.h: stream.drv
 .INTERMEDIATE: stream.elf
 
 stream.elf: $(OBJS)
-	$(DC_ARM7CC) -Wl,-Ttext,0x00000000 -nostartfiles -nostdlib -e reset -o $@ $^ -lgcc
+	$(DC_ARM7CC) $(DC99_ARM) -Wl,-Ttext,0x00000000,-N,--fix-v4bx -nostartfiles -nostdlib -e reset -o $@ $^ -lgcc
 
 %.o: %.c
-	$(DC_ARM7CC) -O2 $(DC_ARM7INCS) -c $< -o $@
+	$(DC_ARM7CC) $(DC99_ARM) -O2 $(DC_ARM7INCS) -c $< -o $@
 
 %.o: %.s
 	$(DC_ARM7AS) $< -o $@
