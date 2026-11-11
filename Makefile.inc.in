@@ -305,7 +305,7 @@ req required: .deps $(REQUIRED_LOCAL) required_subdirs
 # DC99 rebuild: modern gcc has no "-I-".  Local dirs are searched for "quoted" includes only
 # (-iquote); the KOS fork's own libc replaces the compiler's (-nostdinc).
 DC99_GCCINC:=$(shell $(KOS_CC) -print-file-name=include)
-DC99_SAFE=-w -fcommon -fgnu89-inline -fno-delete-null-pointer-checks -fwrapv -ffreestanding -fno-tree-loop-distribute-patterns -fno-optimize-sibling-calls -fno-stack-protector
+DC99_SAFE=-w -fno-reorder-functions -fcommon -fgnu89-inline -fno-delete-null-pointer-checks -fwrapv -ffreestanding -fno-tree-loop-distribute-patterns -fno-optimize-sibling-calls -fno-stack-protector
 KOS_INC_RULES=$(DC99_SAFE) $(patsubst -I%,-iquote%,$(KOS_LOCAL_INCS)) -nostdinc -isystem $(DC99_GCCINC) $(KOS_INCS) -I$(KOS_BASE)/kernel/arch/$(KOS_ARCH)/include
 
 #CDEP=-MT $@ -MD -MP -MF .deps/$(@:%.o=%.d)
