@@ -576,6 +576,126 @@ static int lua_resolv(lua_State * L)
   return 0;
 }
 
+/* ------------------------------------------------------------------------
+ * Console network settings.
+ *
+ * Reads the settings saved in the console by a browser or a BBA set-up disc
+ * (flash partition 2, logical block 0xE0, the block KallistiOS'
+ * flashrom_get_ispcfg() reads). The flash is memory mapped at 0xa0200000.
+ * ---------------------------------------------------------------------- */
+#define FC_FLASH      0xa0200000
+#define FC_PART_START 0x1c000	/* partition 2, 16 KB, same on every console */
+#define FC_PART_SIZE  0x4000
+
+static uint8 fc_rd(uint32 off)
+{
+  return *(volatile uint8 *)(FC_FLASH + off);
+}
+
+static uint16 fc_crc16(const uint8 * d, int n)
+{
+  uint16 rv = 0xffff, t;
+  while (n--) {
+    t = (rv >> 8) ^ *d++;
+    t ^= t >> 4;
+    rv = (rv << 8) ^ (t << 12) ^ (t << 5) ^ t;
+  }
+  return rv ^ 0xffff;
+}
+
+/* newest valid copy of logical block 'id' -> b[64] ; 0 if found */
+static int fc_get_block(int id, uint8 * b)
+{
+  static const char magic[] = "KATANA_FLASH____";
+  const int bmbytes = 64;
+  const uint32 bm = FC_PART_START + FC_PART_SIZE - bmbytes;
+  int i, k;
+
+  for (k = 0; k < 16; k++)
+    if (fc_rd(FC_PART_START + k) != (uint8)magic[k])
+      return -1;
+  if ((fc_rd(FC_PART_START + 16) | (fc_rd(FC_PART_START + 17) << 8)) != 2)
+    return -1;
+  /* bitmap : a 0 bit marks a used block ; blocks are written in order */
+  for (i = 0; i < bmbytes * 8; i++)
+    if (fc_rd(bm + i / 8) & (0x80 >> (i % 8)))
+      break;
+  if (i == 0)
+    return -1;
+  for (i = i - 1; i > 0; i--) {
+    uint32 a = FC_PART_START + (uint32)(i + 1) * 64;
+    if (a + 64 > bm)
+      continue;
+    for (k = 0; k < 64; k++)
+      b[k] = fc_rd(a + k);
+    if ((b[0] | (b[1] << 8)) != id)
+      continue;
+    if (fc_crc16(b, 62) != (uint16)(b[62] | (b[63] << 8)))
+      continue;
+    return 0;
+  }
+  return -1;
+}
+
+/* net_flashcfg() : method, ip, mask, gateway, dns1, dns2  (or nothing) */
+static int lua_flashcfg(lua_State * L)
+{
+  static const int at[5] = { 10, 14, 30, 22, 26 }; /* ip mask gw dns1 dns2 */
+  uint8 b[64];
+  char s[20];
+  int i;
+
+  lua_settop(L, 0);
+  if (fc_get_block(0xe0, b))
+    return 0;
+  lua_pushnumber(L, b[6]);	/* 0 dial-up, 1 DHCP, 2 PPPoE, 3 static */
+  for (i = 0; i < 5; i++) {
+    const uint8 * p = b + at[i];
+    sprintf(s, "%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
+    lua_pushstring(L, s);
+  }
+  return 6;
+}
+
+/* net_has_bba() : 1 if a Broadband Adapter is fitted.
+ *
+ * Reading the adapter's ID with nothing in the expansion port leaves G2 bus
+ * error flags set, and the sound chip is on the same bus. So the check runs
+ * with interrupts off, waits for the G2 FIFO before each read and clears
+ * only the error flags it caused. Done once ; the answer is remembered.
+ */
+static int lua_has_bba(lua_State * L)
+{
+  static const char id[17] = "GAPSPCI_BRIDGE_2";
+  static int known = -1;
+  volatile uint32 * const isterr = (volatile uint32 *)0xa05f6908;
+  volatile uint32 * const ffst = (volatile uint32 *)0xa05f688c;
+
+  if (known < 0) {
+    uint32 before;
+    int i, n, ok = 1, old = irq_disable();
+
+    before = *isterr;
+    for (i = 0; i < 16; i++) {
+      for (n = 100000; (*ffst & 0x11) && --n; )
+	;
+      if (*(volatile uint8 *)(0xa1001400 + i) != (uint8)id[i]) {
+	ok = 0;
+	break;
+      }
+    }
+    *isterr = *isterr & ~before;	/* writing 1 clears a flag */
+    irq_restore(old);
+    known = ok;
+  }
+
+  lua_settop(L, 0);
+  if (!known)
+    return 0;
+  lua_pushnumber(L, 1);
+  return 1;
+}
+
 static int lua_dma(lua_State * L)
 {
   dma_test((int)lua_tonumber(L, 1));
@@ -662,6 +782,28 @@ static luashell_command_description_t driver_commands[] = {
     "Set DNS server address.",
     /* function */
     SHELL_COMMAND_C, lua_resolv
+  },
+
+  {
+    /* long names, short names and topic */
+    DRIVER_NAME"_flashcfg", 0, 0,
+    /* usage */
+    DRIVER_NAME"_flashcfg() : "
+    "Read the network settings saved in the console. Returns method "
+    "(0 dial-up, 1 DHCP, 2 PPPoE, 3 static), ip, mask, gateway, dns1, dns2 "
+    "or nothing if no settings are saved.",
+    /* function */
+    SHELL_COMMAND_C, lua_flashcfg
+  },
+
+  {
+    /* long names, short names and topic */
+    DRIVER_NAME"_has_bba", 0, 0,
+    /* usage */
+    DRIVER_NAME"_has_bba() : "
+    "Returns 1 if a Broadband Adapter is fitted (safe to call on any console).",
+    /* function */
+    SHELL_COMMAND_C, lua_has_bba
   },
 
   {

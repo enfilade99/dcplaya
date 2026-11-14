@@ -20,7 +20,7 @@ extern dhcp_header_t * dhcp;
 static int dhcp_xid;
 static dhcp_conf_t dhcp_conf;
 
-static char *host_name = "dcplaya";
+static char host_name[] = "dcplaya";
 #define lhost_name (sizeof(host_name) - 1)
 
 static char parameter_request_list[] = { 54, 51, 1, 3, 6, 15 };
@@ -73,7 +73,7 @@ void dhcp_discover(unsigned int xid)
   dhcp->hops   = 0;   // zero for client
   dhcp->xid    = xid; // transaction id
   dhcp->secs   = 0;   // seconds elapsed since client began address acquisition or renewal process
-  dhcp->flags  = htons(0); // 0x8000 = broadcast
+  dhcp->flags  = htons(0x8000); // ask for a broadcast reply
   dhcp->ciaddr = htonl(0); // client ip address
   memcpy(dhcp->chaddr, eth_mac, sizeof(dhcp->chaddr));
 
@@ -84,6 +84,11 @@ void dhcp_discover(unsigned int xid)
   *opts++ = 53; /* DHCP Message Type */
   *opts++ = 1;
   *opts++ = 1;  /* DHCPDISCOVER */
+
+  *opts++ = 55; // parameter request list
+  *opts++ = sizeof(parameter_request_list);
+  memcpy(opts, parameter_request_list, sizeof(parameter_request_list));
+  opts += sizeof(parameter_request_list);
 
   *opts++ = 12; // host name
   *opts++ = lhost_name;
@@ -97,6 +102,10 @@ void dhcp_discover(unsigned int xid)
   opts += sizeof(eth_mac);
 
   *opts++ = 255;
+
+  /* a BOOTP message is at least 300 bytes ; some servers drop shorter ones */
+  while (sizeof(*dhcp) - 1 + (opts - dhcp->data) < 300)
+    *opts++ = 0;
 
   build_send_packet(67, 68, sizeof(*dhcp) - 1 + opts - dhcp->data);
 }
@@ -119,7 +128,7 @@ void dhcp_request()
   dhcp->hops   = 0;   // zero for client
   dhcp->xid    = dhcp_xid; // transaction id
   dhcp->secs   = 0;   // seconds elapsed since client began address acquisition or renewal process
-  dhcp->flags  = htons(0); // 0x8000 = broadcast
+  dhcp->flags  = htons(0x8000); // ask for a broadcast reply
   dhcp->ciaddr = htonl(0); // client ip address
   memcpy(dhcp->chaddr, eth_mac, sizeof(dhcp->chaddr));
 
@@ -158,6 +167,10 @@ void dhcp_request()
   opts += sizeof(eth_mac);
 
   *opts++ = 255;
+
+  /* a BOOTP message is at least 300 bytes ; some servers drop shorter ones */
+  while (sizeof(*dhcp) - 1 + (opts - dhcp->data) < 300)
+    *opts++ = 0;
 
   build_send_packet(67, 68, sizeof(*dhcp) - 1 + opts - dhcp->data);
 }
