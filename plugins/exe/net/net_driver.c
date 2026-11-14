@@ -100,6 +100,111 @@ static int net_driver_open(const char * name)
 
 struct sockaddr_in dnssrv;
 
+/* ------------------------------------------------------------------------
+ * Dreamcast Now presence.
+ *
+ * A DreamPi works out which program a Dreamcast is running from the name of
+ * the most recent DNS lookup it sees. While the network is up we therefore
+ * look up DCNOW_NAME: a few times straight after the DNS server is set, then
+ * about once a minute, and again right after every real host lookup (which
+ * would otherwise hide it). Only the query has to reach the DNS server, so
+ * the answer is never waited for.
+ * ---------------------------------------------------------------------- */
+#define DCNOW_NAME   "dcplaya.dnslookup"
+#define DCNOW_PERIOD 60		/* seconds between lookups */
+
+static kthread_t * dcnow_thd;
+static volatile int dcnow_run;
+static volatile int dcnow_done;
+
+static void dcnow_ping(void)
+{
+  static unsigned int id = 0xdc00;
+  static const char name[] = DCNOW_NAME;
+  struct sockaddr_in to;
+  uint8 q[12 + sizeof(name) + 1 + 4];
+  int i, o, ls, sock;
+
+  if (!lwipinit || !dnssrv.sin_port)
+    return;
+
+  /* header : id, flags (recursion desired), 1 question */
+  memset(q, 0, sizeof(q));
+  ++id;
+  q[0] = id >> 8; q[1] = id;
+  q[2] = 0x01;
+  q[5] = 0x01;
+  /* question name, as length-prefixed labels */
+  ls = 12; o = 13;
+  for (i = 0; ; i++) {
+    if (name[i] == '.' || name[i] == 0) {
+      q[ls] = o - ls - 1;
+      ls = o++;
+      if (!name[i])
+	break;
+    } else
+      q[o++] = name[i];
+  }
+  /* here q[ls] is the closing zero-length label and o is just after it */
+  q[o++] = 0; q[o++] = 1;	/* type A    */
+  q[o++] = 0; q[o++] = 1;	/* class IN  */
+
+  sock = lwip_socket(2 /* PF_INET */, 2 /* SOCK_DGRAM */, 0);
+  if (sock < 0)
+    return;
+  memcpy(&to, &dnssrv, sizeof(to));
+  to.sin_family = 2 /* AF_INET */;
+  lwip_sendto(sock, q, o, 0, (struct sockaddr *)&to, sizeof(to));
+  lwip_close(sock);
+}
+
+static void dcnow_thread(void * param)
+{
+  int ticks = 0;	/* quarter seconds since the last lookup */
+  int early = 3;	/* extra lookups at start-up (the first one may be
+			   lost while the gateway address is being found) */
+
+  while (dcnow_run) {
+    if (ticks <= 0) {
+      dcnow_ping();
+      if (early > 0) {
+	--early;
+	ticks = 3 * 4;
+      } else
+	ticks = DCNOW_PERIOD * 4;
+    }
+    thd_sleep(250);
+    --ticks;
+  }
+  dcnow_done = 1;
+}
+
+static void dcnow_start(void)
+{
+  if (dcnow_thd)
+    return;
+  dcnow_run = 1;
+  dcnow_done = 0;
+  dcnow_thd = thd_create(dcnow_thread, 0);
+  if (dcnow_thd)
+    thd_set_label(dcnow_thd, "dcnow");
+  else
+    dcnow_run = 0;
+}
+
+static void dcnow_stop(void)
+{
+  int i;
+  if (!dcnow_thd)
+    return;
+  dcnow_run = 0;
+  /* the thread's code lives in this plugin : it must be gone before the
+     plugin can be unloaded. */
+  for (i = 0; i < 200 && !dcnow_done; i++)
+    thd_sleep(50);
+  dcnow_thd = 0;
+}
+
 int dns(const char * name, struct ip_addr * res)
 {
   int i;
@@ -133,7 +238,10 @@ int dns(const char * name, struct ip_addr * res)
 
  dns:
   if (dnssrv.sin_port) {
-    if (lwip_gethostbyname(&dnssrv, name, &res->addr) < 0) {
+    int err = lwip_gethostbyname(&dnssrv, name, &res->addr) < 0;
+    /* keep our own name the most recent lookup (see Dreamcast Now above) */
+    dcnow_ping();
+    if (err) {
       printf("gethostbyname: Can't look up name");
       return -1;
     } else {
@@ -236,6 +344,8 @@ static int lua_net_shutdown(lua_State * L)
   if (!init) {
     goto ok;
   }
+
+  dcnow_stop();
 
   if (lwipinit) {
     httpfs_shutdown();
@@ -460,6 +570,8 @@ static int lua_resolv(lua_State * L)
   dnssrv.sin_port = htons(53);
 
   printf("DNS server address set to '%s'\n", lua_tostring(L, 1));
+
+  dcnow_start();
 
   return 0;
 }
