@@ -219,7 +219,7 @@ function net_autoconnect(quiet)
    if not quiet then
       local text
       if ok then
-	 text = '<left>Connected ! ('..how..')<br><vspace h="8">IP address : '..cfg.ip..'<br>Gateway : '..cfg.gw..'<br>DNS : '..cfg.dns..'<br><vspace h="8">Internet radio is ready to play.<br><center>'
+	 text = '<left>Connected ! ('..how..')<br><vspace h="8">IP address : '..cfg.ip..'<br>Netmask : '..cfg.mask..'<br>Gateway : '..cfg.gw..'<br>DNS : '..cfg.dns..'<br><vspace h="8">Internet radio is ready to play.<br><center>'
       else
 	 text = '<left>Not connected.<br><vspace h="8">'..net_error..'<br><vspace h="8">Check the network cable, or choose Manual settings.<br><center>'
       end
