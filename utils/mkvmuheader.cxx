@@ -164,15 +164,15 @@ struct vmu_fileheader {
 
 
   int set_vms_desc(const char *s) {
-    set_text(vms_desc, sizeof(vms_desc), s);
+    set_text(vms_desc, sizeof(vms_desc), s); return 0;
   }
 
   int set_long_desc(const char *s) {
-    set_text(long_desc, sizeof(long_desc), s);
+    set_text(long_desc, sizeof(long_desc), s); return 0;
   }
 
   int set_appli(const char *s) {
-    set_string(appli, sizeof(appli), s);
+    set_string(appli, sizeof(appli), s); return 0;
   }
 
   void set_lut(const pix32_t * p) {

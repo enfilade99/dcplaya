@@ -1,396 +1,242 @@
-alloc.o: alloc.c \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/stdlib.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/unistd.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/malloc.h \
- ../sha123/alloc.h
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/stdlib.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/unistd.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/malloc.h:
-
+alloc.o: alloc.c /src/kos-dcplaya/libc/include/stdlib.h \
+ /src/kos-dcplaya/libc/include/sys/cdefs.h \
+ /src/kos-dcplaya/libc/include/unistd.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h \
+ /src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h \
+ /src/kos-dcplaya/libc/include/malloc.h ../sha123/alloc.h
+/src/kos-dcplaya/libc/include/stdlib.h:
+/src/kos-dcplaya/libc/include/sys/cdefs.h:
+/src/kos-dcplaya/libc/include/unistd.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h:
+/src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h:
+/src/kos-dcplaya/libc/include/malloc.h:
 ../sha123/alloc.h:
-api.o: api.c \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/stdlib.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/unistd.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/malloc.h \
- ../sha123/api.h ../istream/istream.h ../sha123/tables.h \
- ../sha123/types.h ../sha123/sha123.h ../sha123/defs.h \
- ../sha123/bitstream.h ../sha123/equalizer.h ../sha123/header.h \
- ../sha123/alloc.h ../sha123/debug.h ../sha123/decode.h ../sha123/dct.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/stdio.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stdarg.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/kos/fs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/kos/limits.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/queue.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/kos/nmmgr.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/string.h
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/stdlib.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/unistd.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/malloc.h:
-
+api.o: api.c /src/kos-dcplaya/libc/include/stdlib.h \
+ /src/kos-dcplaya/libc/include/sys/cdefs.h \
+ /src/kos-dcplaya/libc/include/unistd.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h \
+ /src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h \
+ /src/kos-dcplaya/libc/include/malloc.h ../sha123/api.h \
+ ../istream/istream.h ../sha123/tables.h ../sha123/types.h \
+ ../sha123/sha123.h ../sha123/defs.h ../sha123/bitstream.h \
+ ../sha123/equalizer.h ../sha123/header.h ../sha123/alloc.h \
+ ../sha123/debug.h ../sha123/decode.h ../sha123/dct.h \
+ /src/kos-dcplaya/libc/include/stdio.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stdarg.h \
+ /src/kos-dcplaya/include/kos/fs.h /src/kos-dcplaya/include/kos/limits.h \
+ /src/kos-dcplaya/libc/include/time.h \
+ /src/kos-dcplaya/libc/include/sys/queue.h \
+ /src/kos-dcplaya/include/kos/nmmgr.h \
+ /src/kos-dcplaya/libc/include/string.h
+/src/kos-dcplaya/libc/include/stdlib.h:
+/src/kos-dcplaya/libc/include/sys/cdefs.h:
+/src/kos-dcplaya/libc/include/unistd.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h:
+/src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h:
+/src/kos-dcplaya/libc/include/malloc.h:
 ../sha123/api.h:
-
 ../istream/istream.h:
-
 ../sha123/tables.h:
-
 ../sha123/types.h:
-
 ../sha123/sha123.h:
-
 ../sha123/defs.h:
-
 ../sha123/bitstream.h:
-
 ../sha123/equalizer.h:
-
 ../sha123/header.h:
-
 ../sha123/alloc.h:
-
 ../sha123/debug.h:
-
 ../sha123/decode.h:
-
 ../sha123/dct.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/stdio.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stdarg.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/kos/fs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/kos/limits.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/queue.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/kos/nmmgr.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/string.h:
+/src/kos-dcplaya/libc/include/stdio.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stdarg.h:
+/src/kos-dcplaya/include/kos/fs.h:
+/src/kos-dcplaya/include/kos/limits.h:
+/src/kos-dcplaya/libc/include/time.h:
+/src/kos-dcplaya/libc/include/sys/queue.h:
+/src/kos-dcplaya/include/kos/nmmgr.h:
+/src/kos-dcplaya/libc/include/string.h:
 bitstream.o: bitstream.c ../sha123/bitstream.h \
  ../sha123/bitstream_inline.h ../sha123/debug.h
-
 ../sha123/bitstream.h:
-
 ../sha123/bitstream_inline.h:
-
 ../sha123/debug.h:
+dct.o: dct.c ../sha123/debug.h ../sha123/dct.h ../sha123/types.h \
+ ../sha123/dct64.h ../sha123/dct36.h
+../sha123/debug.h:
+../sha123/dct.h:
+../sha123/types.h:
+../sha123/dct64.h:
+../sha123/dct36.h:
 dct12_std.o: dct12_std.c ../sha123/defs.h ../sha123/dct12.h \
  ../sha123/types.h
-
 ../sha123/defs.h:
-
 ../sha123/dct12.h:
-
 ../sha123/types.h:
 dct36.o: dct36.c ../sha123/dct36.h ../sha123/dct.h ../sha123/types.h
-
 ../sha123/dct36.h:
-
 ../sha123/dct.h:
-
 ../sha123/types.h:
 dct36_std.o: dct36_std.c ../sha123/dct36.h ../sha123/dct.h \
  ../sha123/types.h ../sha123/defs.h
-
 ../sha123/dct36.h:
-
 ../sha123/dct.h:
-
 ../sha123/types.h:
-
 ../sha123/defs.h:
 dct64.o: dct64.c ../sha123/dct64.h ../sha123/dct.h ../sha123/types.h
-
 ../sha123/dct64.h:
-
 ../sha123/dct.h:
-
 ../sha123/types.h:
 dct64_std.o: dct64_std.c ../sha123/dct64.h ../sha123/dct.h \
  ../sha123/types.h
-
 ../sha123/dct64.h:
-
 ../sha123/dct.h:
-
 ../sha123/types.h:
-dct.o: dct.c ../sha123/debug.h ../sha123/dct.h ../sha123/types.h \
- ../sha123/dct64.h ../sha123/dct36.h
-
-../sha123/debug.h:
-
-../sha123/dct.h:
-
-../sha123/types.h:
-
-../sha123/dct64.h:
-
-../sha123/dct36.h:
 debug.o: debug.c
 decode.o: decode.c ../sha123/dct64.h ../sha123/dct.h ../sha123/types.h \
  ../sha123/decode.h ../sha123/tables.h
-
 ../sha123/dct64.h:
-
 ../sha123/dct.h:
-
 ../sha123/types.h:
-
 ../sha123/decode.h:
-
 ../sha123/tables.h:
-equalizer.o: equalizer.c \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h \
+equalizer.o: equalizer.c /src/kos-dcplaya/include/math.h \
+ /src/kos-dcplaya/libc/include/sys/cdefs.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/math.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h \
+ /src/kos-dcplaya/libc/include/time.h \
+ /src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h \
  ../sha123/equalizer.h ../sha123/types.h
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h:
-
+/src/kos-dcplaya/include/math.h:
+/src/kos-dcplaya/libc/include/sys/cdefs.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/math.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h:
+/src/kos-dcplaya/libc/include/time.h:
+/src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h:
 ../sha123/equalizer.h:
-
 ../sha123/types.h:
 header.o: header.c ../sha123/header.h ../sha123/debug.h
-
 ../sha123/header.h:
-
 ../sha123/debug.h:
 layer1.o: layer1.c ../sha123/sha123.h ../sha123/api.h \
  ../istream/istream.h ../sha123/defs.h ../sha123/types.h \
  ../sha123/bitstream.h ../sha123/equalizer.h ../sha123/header.h \
  ../sha123/tables.h
-
 ../sha123/sha123.h:
-
 ../sha123/api.h:
-
 ../istream/istream.h:
-
 ../sha123/defs.h:
-
 ../sha123/types.h:
-
 ../sha123/bitstream.h:
-
 ../sha123/equalizer.h:
-
 ../sha123/header.h:
-
 ../sha123/tables.h:
-layer2.o: layer2.c \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h \
+layer2.o: layer2.c /src/kos-dcplaya/include/math.h \
+ /src/kos-dcplaya/libc/include/sys/cdefs.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/math.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h \
+ /src/kos-dcplaya/libc/include/time.h \
+ /src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h \
  ../sha123/sha123.h ../sha123/api.h ../istream/istream.h ../sha123/defs.h \
  ../sha123/types.h ../sha123/bitstream.h ../sha123/equalizer.h \
  ../sha123/header.h ../sha123/l2tables.h ../sha123/tables.h
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h:
-
+/src/kos-dcplaya/include/math.h:
+/src/kos-dcplaya/libc/include/sys/cdefs.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/math.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h:
+/src/kos-dcplaya/libc/include/time.h:
+/src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h:
 ../sha123/sha123.h:
-
 ../sha123/api.h:
-
 ../istream/istream.h:
-
 ../sha123/defs.h:
-
 ../sha123/types.h:
-
 ../sha123/bitstream.h:
-
 ../sha123/equalizer.h:
-
 ../sha123/header.h:
-
 ../sha123/l2tables.h:
-
 ../sha123/tables.h:
-layer3.o: layer3.c \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h \
+layer3.o: layer3.c /src/kos-dcplaya/include/math.h \
+ /src/kos-dcplaya/libc/include/sys/cdefs.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/math.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h \
+ /src/kos-dcplaya/libc/include/time.h \
+ /src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h \
  ../sha123/debug.h ../sha123/sha123.h ../sha123/api.h \
  ../istream/istream.h ../sha123/defs.h ../sha123/types.h \
  ../sha123/bitstream.h ../sha123/equalizer.h ../sha123/header.h \
  ../sha123/huffman.h ../sha123/dct12.h ../sha123/dct36.h ../sha123/dct.h
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h:
-
+/src/kos-dcplaya/include/math.h:
+/src/kos-dcplaya/libc/include/sys/cdefs.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/math.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h:
+/src/kos-dcplaya/libc/include/time.h:
+/src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h:
 ../sha123/debug.h:
-
 ../sha123/sha123.h:
-
 ../sha123/api.h:
-
 ../istream/istream.h:
-
 ../sha123/defs.h:
-
 ../sha123/types.h:
-
 ../sha123/bitstream.h:
-
 ../sha123/equalizer.h:
-
 ../sha123/header.h:
-
 ../sha123/huffman.h:
-
 ../sha123/dct12.h:
-
 ../sha123/dct36.h:
-
 ../sha123/dct.h:
-tables.o: tables.c \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h \
- /opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h \
- /home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h \
+tables.o: tables.c /src/kos-dcplaya/include/math.h \
+ /src/kos-dcplaya/libc/include/sys/cdefs.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/math.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h \
+ /src/kos-dcplaya/libc/include/time.h \
+ /src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h \
+ /opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h \
+ /src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h \
  ../sha123/tables.h ../sha123/types.h ../sha123/debug.h
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/sys/cdefs.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/math.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/reent.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/_ansi.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/sys/config.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//libc/include/time.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//kernel/arch/dreamcast/include/arch/types.h:
-
-/opt/sh-dc-elf-4.4.1/lib/gcc/sh-dc-elf/4.4.1/include/stddef.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/ieeefp.h:
-
-/home/zig/Dev/dc/newcompile/dcplaya/../kos//include/newlib-libm-sh4/machine/fastmath.h:
-
+/src/kos-dcplaya/include/math.h:
+/src/kos-dcplaya/libc/include/sys/cdefs.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/math.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/reent.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/_ansi.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/sys/config.h:
+/src/kos-dcplaya/libc/include/time.h:
+/src/kos-dcplaya/kernel/arch/dreamcast/include/arch/types.h:
+/opt/toolchains/dc/sh-elf/lib/gcc/sh-elf/13.2.0/include/stddef.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/ieeefp.h:
+/src/kos-dcplaya/include/newlib-libm-sh4/machine/fastmath.h:
 ../sha123/tables.h:
-
 ../sha123/types.h:
-
 ../sha123/debug.h:
