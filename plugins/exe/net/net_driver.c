@@ -648,6 +648,21 @@ static int lua_flashcfg(lua_State * L)
   lua_settop(L, 0);
   if (fc_get_block(0xe0, b))
     return 0;
+
+  /* Some consoles have a useless netmask saved (255.255.255.255 has been
+     seen : games ignore the field). A netmask must be a run of 1 bits
+     followed by 0 bits, not all ones, and must put the gateway on our own
+     network. Anything else is replaced by 255.255.255.0. */
+  {
+    uint32 ip = (b[10] << 24) | (b[11] << 16) | (b[12] << 8) | b[13];
+    uint32 nm = (b[14] << 24) | (b[15] << 16) | (b[16] << 8) | b[17];
+    uint32 gw = (b[30] << 24) | (b[31] << 16) | (b[32] << 8) | b[33];
+    uint32 inv = ~nm;
+    if (!nm || !inv || (inv & (inv + 1)) || (gw && ((ip ^ gw) & nm))) {
+      b[14] = b[15] = b[16] = 255;
+      b[17] = 0;
+    }
+  }
   lua_pushnumber(L, b[6]);	/* 0 dial-up, 1 DHCP, 2 PPPoE, 3 static */
   for (i = 0; i < 5; i++) {
     const uint8 * p = b + at[i];
