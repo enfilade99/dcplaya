@@ -26,7 +26,7 @@ static void memzero_align8(void *dst,size_t size)
 #if defined(__SH4__) || defined(__SH4_SINGLE__) || defined(__SH4_SINGLE_ONLY__)
 	dst+=size;
 	size/=8*4;
-	asm(
+	asm volatile(
 #if defined(__SH4__)
 	" fschg\n"  //single float mode
 	caca !!
@@ -44,7 +44,7 @@ static void memzero_align8(void *dst,size_t size)
 #if defined(__SH4_SINGLE__) || defined(__SH4_SINGLE_ONLY__)
 	" fschg" //back to single
 #endif
-	: : "r"(dst),"r"(size): "memory" );
+	: "+r"(dst),"+r"(size) : : "memory", "fr0", "fr1", "t" );
 #else
 	double *d = dst;
 	size/=8*4;

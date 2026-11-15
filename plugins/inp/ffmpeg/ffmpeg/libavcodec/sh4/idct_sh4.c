@@ -54,7 +54,13 @@ const	static float odd_table[] __attribute__ ((aligned(8))) = {
 
 #if defined(__SH4_SINGLE__) || defined(__SH4_SINGLE_ONLY__)
 
+/* The pointer register is advanced by the instructions below, so it is an
+   in/out operand on a private copy. (It used to be a plain input : newer
+   compilers then reuse the register, believing it still points to the start
+   of the table, and load a wrong matrix.) */
 #define	load_matrix(table) \
+	do { \
+	const float * lm_ptr = (table); \
 	__asm__ volatile( \
 	"	fschg\n" \
 	"	fmov	@%0+,xd0\n" \
@@ -66,10 +72,9 @@ const	static float odd_table[] __attribute__ ((aligned(8))) = {
 	"	fmov	@%0+,xd12\n" \
 	"	fmov	@%0+,xd14\n" \
 	"	fschg\n" \
-	:\
-	: "r"(table)\
-	: "0" \
-	)
+	: "+r"(lm_ptr) \
+	); \
+	} while (0)
 
 #define	ftrv() \
 		__asm__ volatile("ftrv xmtrx,fv0" \
