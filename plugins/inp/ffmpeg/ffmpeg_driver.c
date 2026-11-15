@@ -227,6 +227,14 @@ static lef_prog_t * codecs[32];
 static int nbcodecs;
 
 static int adaptative_synchro = 1;
+static int vskip_mode;            /* DC99: see vskip_filter() */
+static volatile int video_late;
+
+/* DC99: picture clock, see vidstream_thread() */
+static int vclk_valid;
+static int vclk_off;          /* film time minus system time, ms * 256 */
+static uint64_t vclk_stamp;   /* audio_time of the last estimate used */
+
 static int limit_fifo;
 
 /* from playa.c to force the player priority */
@@ -374,7 +382,11 @@ static int start(const char *fn, int track, playa_info_t *info)
 
   stop();
 
-  if(id3_info(info, fn)<0) {
+  /* DC99: no ID3 tag look-up on network streams. It opened a second
+     connection to the server, which then sent the stream twice. */
+  if (strstr(fn, "/http/") == fn) {
+    memset(info, 0, sizeof(*info));
+  } else if(id3_info(info, fn)<0) {
     playa_info_free(info);
   }
 
@@ -737,6 +749,11 @@ int decode_start(const char * filename)
 
     shift_pts = -1;
     vshift_pts = -1;
+    vskip_mode = 0;
+    video_late = 0;
+    audio_time = 0;
+    vclk_valid = 0;
+    vclk_stamp = 0;
 
     video_frame_counter = 0;
 
@@ -1257,6 +1274,120 @@ static int vid_fifo_put(AVPacket * pkt)
 
 static int vidstream_skip;
 
+/* DC99: graceful frame skipping.
+ *
+ * When the video decoder is too slow for a clip, pictures reach the screen
+ * late; left alone, the packet fifo then fills up, the reader cannot go on,
+ * the sound runs dry and a live server starts throwing data away.
+ * The picture thread measures how late each picture is (video_late). When
+ * that grows, the decode thread drops pictures that nothing else depends on:
+ * first B pictures only, and if that is not enough everything up to the next
+ * key frame. A dropped picture never damages the ones that are shown.
+ */
+#define VSKIP_B_ON      150  /* ms late : start dropping B pictures */
+#define VSKIP_B_OFF      30  /* ms late : back to normal */
+#define VSKIP_KEY_ON    600  /* ms late : drop everything up to a key frame */
+
+/* video_late : ms, set by the picture thread */
+static int vskip_count;         /* packets seen since dropping began */
+static int vskip_b;             /* B pictures dropped since then */
+/* vskip_mode : 0 off, 1 drop B, 2 drop to next key frame,
+                3 drop the B pictures that follow it */
+
+/* 'I', 'P', 'B', or 0 when the packet does not start a picture we know */
+static int pkt_pict_type(int codec_id, const uint8_t * d, int size)
+{
+  int i, n = size - 6;
+  if (n > 1024)
+    n = 1024;
+  if (codec_id == CODEC_ID_MPEG4) {
+    for (i = 0; i < n; i++)
+      if (d[i] == 0 && d[i+1] == 0 && d[i+2] == 1 && d[i+3] == 0xB6) {
+	switch (d[i+4] >> 6) {
+	case 0: return 'I';
+	case 2: return 'B';
+	default: return 'P';
+	}
+      }
+  } else if (codec_id == CODEC_ID_MPEG1VIDEO || codec_id == CODEC_ID_MPEG2VIDEO) {
+    for (i = 0; i < n; i++)
+      if (d[i] == 0 && d[i+1] == 0 && d[i+2] == 1 && d[i+3] == 0) {
+	switch ((d[i+5] >> 3) & 7) {
+	case 1: return 'I';
+	case 2: return 'P';
+	case 3: return 'B';
+	default: return 0;
+	}
+      }
+  }
+  return 0;
+}
+
+/* returns 1 if this packet is to be thrown away undecoded */
+static int vskip_filter(AVPacket * pkt)
+{
+  int id, type, late = video_late;
+
+  if (!vskip_mode && late < VSKIP_B_ON)
+    return 0;
+
+  id = video_stream->codec.codec_id;
+  if (id != CODEC_ID_MPEG4 && id != CODEC_ID_MPEG1VIDEO &&
+      id != CODEC_ID_MPEG2VIDEO) {
+    vskip_mode = 0;
+    return 0;
+  }
+
+  type = pkt_pict_type(id, pkt->data, pkt->size);
+
+  switch (vskip_mode) {
+  case 0:
+    vskip_mode = 1;
+    vskip_count = 0;
+    vskip_b = 0;
+    /* fall through */
+  case 1:
+    if (late <= VSKIP_B_OFF) {
+      /* caught up */
+      vskip_mode = 0;
+      return 0;
+    }
+    vskip_count++;
+    if (type == 'B') {
+      vskip_b++;
+      return 1;
+    }
+    if (late >= VSKIP_KEY_ON && (vskip_count >= 6 || !vskip_b)) {
+      /* dropping B pictures is not enough (or there are none) */
+      video_late = 0; /* measured afresh on the next picture shown */
+      if (type == 'I') {
+	vskip_mode = 3;
+	return 0;
+      }
+      vskip_mode = 2;
+      return 1;
+    }
+    return 0;
+  case 2:
+    if (type != 'I')
+      return 1;
+    vskip_mode = 3;
+    return 0;
+  default:
+    /* B pictures right after the key frame lean on a picture we dropped */
+    if (type == 'B')
+      return 1;
+    if (type != 'I' && late >= VSKIP_KEY_ON / 2) {
+      /* still far behind : key frames only for now */
+      video_late = 0;
+      vskip_mode = 2;
+      return 1;
+    }
+    vskip_mode = 0;
+    return 0;
+  }
+}
+
 
 static uint lumi=256, chroma1=256, chroma2=256;
 static uint lt[256], ct1[256], ct2[256];
@@ -1453,13 +1584,17 @@ static void bandyuv420p(struct AVCodecContext *s,
 			const AVFrame *src, int offset[4],
 			int y, int type, int height)
 {
+  /* DC99: read the picture the decoder hands us (src), not the last picture
+     it returned. B pictures are decoded band by band into the top rows of
+     their own buffer; reading the wrong buffer repeated one stale band down
+     the whole screen. */
   int i;
   int w = s->width;
   int h = height;
-  u32_t * srcY1 = (u8_t *) (frame->data[0]+offset[0]);
-  u32_t * srcY2 = (u8_t *) (frame->data[0]+offset[0]);
-  u32_t * srcU = (s8_t *) (frame->data[2]+offset[2]); 
-  u32_t * srcV = (s8_t *) (frame->data[1]+offset[1]);
+  u32_t * srcY1 = (u8_t *) (src->data[0]+offset[0]);
+  u32_t * srcY2 = (u8_t *) (src->data[0]+offset[0]);
+  u32_t * srcU = (s8_t *) (src->data[2]+offset[2]); 
+  u32_t * srcV = (s8_t *) (src->data[1]+offset[1]);
 #ifdef USE_DMA
   u32_t * dst1 = (u32_t *) dma_pics[dma_picin].buf;
   u32_t * dst2 = (u32_t *) dma_pics[dma_picin].buf;
@@ -1468,9 +1603,9 @@ static void bandyuv420p(struct AVCodecContext *s,
   u32_t * dst2 = (u32_t *) btexture2->addr;
 #endif
   int stride = btexture->width;
-  int srcs = (frame->linesize[0]+3)&~3;
-  int srcsU = (frame->linesize[1]+3)&~3;
-  //int srcsV = frame->linesize[2]>>2;
+  int srcs = (src->linesize[0]+3)&~3;
+  int srcsU = (src->linesize[1]+3)&~3;
+  //int srcsV = src->linesize[2]>>2;
   int ww = w/8;
 
   uint l = lumi, c1 = chroma1, c2 = chroma2;
@@ -1760,7 +1895,9 @@ static int vidstream_decode(AVPacket * pkt)
       else
 	video_stream->codec.hurry_up = 0;
     }
-    video_stream->codec.hurry_up = 0;
+    /* DC99: let the decoder itself pass over B pictures while we are
+       dropping them (covers B pictures packed in the same packet as a P) */
+    video_stream->codec.hurry_up = (vskip_mode == 1 || vskip_mode == 3) ? 1 : 0;
 
 #if 0
     {
@@ -1919,197 +2056,60 @@ static void vidstream_thread(void *userdata)
     {
       dma_pict_t * pic = dma_pics + dma_picout;
       uint64_t pts = pic->pts;
+      int measured = 0;
       
       /* time synchronisation */
+
+      /* DC99: one steady clock for the pictures.
+       *
+       * Each time the reader hands sound to the fifo it notes which moment
+       * of the film is leaving the loudspeaker (audio_pts) and when it
+       * looked (audio_time). That estimate moves in steps, so we do not
+       * follow it directly : we keep the difference between it and the
+       * system timer, smoothed over about a second, and run the pictures
+       * from the system timer plus that difference.
+       *
+       * This replaces a scheme that learned the frame period from the first
+       * two pictures and then only allowed itself to run 20-30% faster or
+       * slower. One missing or re-ordered picture at the start of a stream
+       * gave it the wrong period for good, the pictures fell behind, the
+       * fifos filled up and playback stalled.
+       */
       while ( audio_stream != NULL && pts && 
 	      !vidstream_exit && !vidstream_skip ) {
-	int used;
+	int now, due, late;
+
 	av_lock();
-	used = fifo_used();
-	if (used == 0) {
-	  //printf("SYNCHRO BUG : audio fifo empty\n");
-	  break;
+	now = (int) timer_ms_gettime64();
+	if (audio_time && audio_time != vclk_stamp) {
+	  int s = (int) ((int64_t) audio_pts / 1000) - (int) audio_time;
+	  int d = s - (vclk_off >> 8);
+	  vclk_stamp = audio_time;
+	  if (!vclk_valid || d > 500 || d < -500) {
+	    /* first estimate, or a jump (sound ran dry, new position) */
+	    vclk_off = s << 8;
+	    vclk_valid = 1;
+	  } else
+	    vclk_off += d * 8; /* 1/32 of the error */
 	}
-#if 0
-	if (pts * audio_fifo_rate / AV_TIME_BASE <= 
-	    audio_pts * audio_fifo_rate / AV_TIME_BASE 
-	    - /*audio_fifo_used + */used 
-	    + 6*audio_fifo_rate/60 /* two screen frames */
-	    )
-#else
-
-#if 0
-	  if (pts * 60 / AV_TIME_BASE <= 
-	      audio_pts * 60 / AV_TIME_BASE 
-	      - audio_fc + ta_state.frame_counter 
-	      + 3 /* six screen blanking */
-	      )
-#else
-
-	int iaudio_pts = audio_pts/1000;
-	int ipts = pts/1000;
-	int ioldpts = oldpts/1000;
-#define oldpts ioldpts
-#define pts ipts
-#define audio_pts iaudio_pts
-#define audio_time ((int)audio_time)
-#define uint64 uint32
-#define uint64_t uint32_t
-#define int64 int32
-#define int64_t int32_t
-#define AV_TIME_BASE 1000
-
-        static uint64_t oldtime;
-	static float diffavg;
-	static float diffavg2;
-	static int nbdiffs, idiffs;
-	static int64_t olddiff;
-	static uint64_t last_second;
-	uint64_t time;
-	time = timer_ms_gettime64();
-	
-/* 	static uint64_t last_second2; */
-/* 	if (time-last_second2 >= 100) { */
-/* 	  last_second2 = time; */
-/* 	  printf("A/V %g, A %g, V %g\n",  */
-/* 		 (1/1000.0f)*((pts-audio_pts)), */
-/* 		 (1/1000.0f)*((audio_pts)), */
-/* 		 (1/1000.0f)*((pts))); */
-/* 	} */
-
-	if ((1||adaptative_synchro || (time-last_second < 1000)) && oldpts) {
-	  int64_t diff;
-	  uint64_t dtime;
-	  static int coef = (1.055) * (1<<16);
-	  //static int coef = (1<<16);
-	  static int rcoef = (1<<16);
-	  static int oldcoef = (1<<16);
-#define NBDIFFS 10
-	  static float diffs[NBDIFFS];
-	  static float diffs2[NBDIFFS];
-
-	  if (!adaptative_synchro)
-	    ;//rcoef = (1.055) * (1<<16);
-
-	  dtime = (time - oldtime) * rcoef >>16;
-
-	  if ( pts / (AV_TIME_BASE/1000) <= 
-	       oldpts / (AV_TIME_BASE/1000)
-	       - dtime
-	      ) {
-	    //oldpts += ( (time - oldtime) * rcoef >>16) * (AV_TIME_BASE/1000);
-
-	    diff = 
-	      ((uint64_t)(pts/* - audio_pts*/)) / (AV_TIME_BASE/1000) -
-	      ( audio_pts / (AV_TIME_BASE/1000)
-	       + time - audio_time 
-	       + 3*1000/60)
-	      + 125 /* empirical value */
-	      + audio_delay
-	      ;
-
-	    /* 	      if (controler68.buttons & CONT_X) */
-	    /* 		diff += 500; */
-
-	    if (nbdiffs == NBDIFFS) {
-	      diffavg -= diffs[idiffs];
-	      diffavg2 -= diffs2[idiffs];
-	    }
-
-	    int dt = time - oldtime;
-	    if (dt <= 0)
-	      dt = 1;
-	    diffs[idiffs] = ((int)diff)/1000.0f;
-	    diffs2[idiffs] = ((int)(diff-olddiff))/((float)dt);
-	    olddiff = diff;
-	    diffavg += diffs[idiffs];
-	    diffavg2 += diffs2[idiffs];
-
-	    if (nbdiffs < NBDIFFS)
-	      nbdiffs++;
-
-	    idiffs++;
-	    if (idiffs == NBDIFFS)
-	      idiffs = 0;
-
-	    float avg = diffavg/nbdiffs;
-	    float avg2 = diffavg2/nbdiffs;
-
-/* 	    static uint64 opts = 0; */
-/* 	    if (!opts) opts = pts; */
-
-	    static toto; toto++; if ((toto&7)==0)
-/* 	      printf("pts %g avg %g avg2 %g coeff %g dt %d\n",  */
-/* 		     (1/1000.0f)*((pts-audio_pts)/(AV_TIME_BASE/1000)), avg, avg2,  */
-/* 		     ((float) coef)/(1<<16), (int)dt); */
-
-	    /* 	      avg = (1 - 0.1*avg); */
-	    /* 	      coef *= avg*avg; */
-
-	    /* 	      avg2 = (1 - 0.1*avg2); */
-	    /* 	      coef *= avg2; */
-
-	    coef -= (10*avg*avg*avg + avg2*avg2*avg2) * (1<<16);
-
-	    const int coefmin = 0.8*(1<<16);
-	    const int coefmax = 1.3*(1<<16);
-	    if (coef < coefmin)
-	      coef = coefmin;
-	    if (coef > coefmax)
-	      coef = coefmax;
-
-	    rcoef = coef; //(coef + oldcoef) / 2;
-	    oldcoef = coef;
-
-	    oldtime = time;
-
-	    break;
-	  }
-
-#undef oldpts
-#undef pts
-#undef audio_pts
-#undef audio_time
-#undef uint64
-#undef uint64_t
-#define AV_TIME_BASE 1000000
-
-	} else {
- 	  last_second = time;
-	  if (pts / (AV_TIME_BASE/1000) <= 
-	      audio_pts / (AV_TIME_BASE/1000)
-	      - audio_time + time 
-	      + 3*1000/60 /* three screen blanking */
-	      - 125 /* empirical value */
-	      - audio_delay
-	      ) {
-	    diffavg = 0;
-	    diffavg2 = 0;
-	    nbdiffs = idiffs = 0;
-	    olddiff = 0;
-
-	    printf("A/V %g, A %g, V %g\n", 
-		   (1/1000.0f)*(pts/1000-audio_pts/1000),
-		   (1/1000.0f)*(audio_pts/1000),
-		   (1/1000.0f)*(pts/1000));
-
-	    oldtime = time;
-	    oldpts = pts;
-
-	    break;
-	  }
-	}
-	if (0)
-#endif
-
-#endif
-	  break;
-
+	late = now + (vclk_off >> 8)
+	  + 3*1000/60 /* three screen blanking */
+	  - 125 /* empirical value */
+	  - audio_delay
+	  - (int) ((int64_t) pts / 1000);
+	/* more than 3 s early is a jump in the stream's clock, not a wait */
+	due = !vclk_valid || late >= 0 || late < -3000;
 	av_unlock();
 
+	if (!measured) {
+	  /* how late this picture was when its turn came */
+	  measured = 1;
+	  video_late = (vclk_valid && late > 0) ? late : 0;
+	}
+	if (due)
+	  break;
 	thd_pass();
       }
-      av_unlock();
 
       /* launch dma */
 #if 1
@@ -2158,7 +2158,7 @@ static void vdecode_thread(void * dummy)
       continue;
     }
 
-    if (!vidstream_skip)
+    if (!vidstream_skip && !vskip_filter(pkt))
       got_picture = vidstream_decode(pkt);
     else
       got_picture = 0;
@@ -2166,6 +2166,15 @@ static void vdecode_thread(void * dummy)
     if (got_picture) {
       while (((dma_picin+1)%dma_picmax) == dma_picout)
 	thd_pass();
+
+      /* DC99: the picture that comes out belongs to this packet's decoding
+	 time, not its presentation time : with B pictures the decoder hands
+	 back the previous reference picture when it is given a new one.
+	 (Without B pictures, and in AVI files, the two times are the same.)
+	 Using the presentation time made the clock jump back and forth on
+	 MPEG-TS / MPEG-PS streams with B pictures. */
+      if (pkt->dts != AV_NOPTS_VALUE)
+	pkt->pts = pkt->dts;
 
       if (pkt->pts == AV_NOPTS_VALUE)
 	printf("VIDEO NO PTS !!\n");
@@ -2366,6 +2375,12 @@ m
       sem_signal(dma_pics_sema);
     }
 #else
+    /* DC99: packets cut out by a parser (MPEG-TS, MPEG-PS ...) point into the
+       parser's own buffer, which the next av_read_frame() overwrites. They sit
+       in the video fifo until the decode thread gets to them, so they need
+       their own copy of the data. (no-op for packets that already own it) */
+    if (av_dup_packet(&pkt) < 0)
+      goto discard_packet;
     if (vid_fifo_put(&pkt))
       printf("BUG ! no more room in video packet fifo\n");
     else
