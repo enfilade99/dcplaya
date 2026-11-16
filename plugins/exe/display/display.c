@@ -336,6 +336,141 @@ static driver_option_t * display_options(any_driver_t * d, int idx,
 }
 
 
+/* DC99: mouse state for the Lua side (player screen pointer).
+ *
+ * The main program is not touched : this plugin registers a maple driver
+ * that owns no device but has a "periodic" call-back. Maple calls it at
+ * every vertical blank, just before it polls the devices again, so each
+ * answer of the mouse is added exactly once to the totals below.
+ */
+#include <dc/maple.h>
+#include <dc/maple/mouse.h>
+
+static volatile int mouse_acc_dx, mouse_acc_dy, mouse_acc_dz;
+static volatile unsigned int mouse_acc_pressed, mouse_acc_buttons;
+static volatile int mouse_acc_seen;
+
+static void dc99_mouse_periodic(maple_driver_t * drv)
+{
+  maple_device_t * dev = maple_enum_type(0, MAPLE_FUNC_MOUSE);
+  mouse_state_t * st;
+
+  if (!dev || !dev->status_valid) {
+    return;
+  }
+  st = (mouse_state_t *) maple_dev_status(dev);
+  if (!st) {
+    return;
+  }
+  mouse_acc_dx += st->dx;
+  mouse_acc_dy += st->dy;
+  mouse_acc_dz += st->dz;
+  mouse_acc_pressed |= st->buttons & ~mouse_acc_buttons;
+  mouse_acc_buttons = st->buttons;
+  mouse_acc_seen = 1;
+  /* the same answer must not be counted again if the next one is late */
+  st->dx = st->dy = st->dz = 0;
+}
+
+static maple_driver_t dc99_mouse_drv = {
+  functions:	0,
+  name:		"DC99 mouse totals",
+  periodic:	dc99_mouse_periodic,
+  attach:	NULL,
+  detach:	NULL
+};
+static int dc99_mouse_registered;
+
+static int lua_mouse_get(lua_State * L)
+{
+  int dx, dy, dz, seen, old;
+  unsigned int buttons, pressed;
+  static int idle;
+
+  if (!dc99_mouse_registered) {
+    dc99_mouse_registered = 1;
+    maple_driver_reg(&dc99_mouse_drv);
+  }
+
+  old = irq_disable();
+  seen = mouse_acc_seen;
+  dx = mouse_acc_dx; dy = mouse_acc_dy; dz = mouse_acc_dz;
+  buttons = mouse_acc_buttons; pressed = mouse_acc_pressed;
+  mouse_acc_dx = mouse_acc_dy = mouse_acc_dz = 0;
+  mouse_acc_pressed = 0;
+  mouse_acc_seen = 0;
+  irq_restore(old);
+
+  lua_settop(L, 0);
+  if (!seen) {
+    /* nothing since the last call : unplugged after a while */
+    if (++idle > 120) {
+      return 0;
+    }
+    dx = dy = dz = 0;
+    pressed = 0;
+  } else {
+    idle = 0;
+  }
+  lua_pushnumber(L, dx);
+  lua_pushnumber(L, dy);
+  lua_pushnumber(L, dz);
+  lua_pushnumber(L, (buttons & MOUSE_LEFTBUTTON) ? 1 : 0);
+  lua_pushnumber(L, (buttons & MOUSE_RIGHTBUTTON) ? 1 : 0);
+  lua_pushnumber(L, (pressed & MOUSE_LEFTBUTTON) ? 1 : 0);
+  lua_pushnumber(L, (pressed & MOUSE_RIGHTBUTTON) ? 1 : 0);
+  return 7;
+}
+
+/* DC99: what the music looks like, for visualizers written in Lua. */
+#include "fft.h"
+#define DC99_MAX_BANDS 64
+static fftbands_t * dc99_bands[DC99_MAX_BANDS + 1];
+
+/* fft_bands(n) : table of n levels (low to high notes), and the loudness */
+static int lua_fft_bands(lua_State * L)
+{
+  int i, n = (int) lua_tonumber(L, 1);
+  fftbands_t * b;
+
+  if (n < 1) n = 1;
+  if (n > DC99_MAX_BANDS) n = DC99_MAX_BANDS;
+  b = dc99_bands[n];
+  if (!b) {
+    b = dc99_bands[n] = fft_create_bands(n, 0);
+  }
+  lua_settop(L, 0);
+  if (!b) {
+    return 0;
+  }
+  fft_fill_bands(b);
+  lua_newtable(L);
+  for (i = 0; i < n; ++i) {
+    lua_pushnumber(L, b->band[i].v);
+    lua_rawseti(L, 1, i + 1);
+  }
+  lua_pushnumber(L, b->loudness);
+  return 2;
+}
+
+/* fft_pcm(n) : table of n samples of the sound being played, -1 to 1 */
+static int lua_fft_pcm(lua_State * L)
+{
+  static short pcm[256];
+  int i, n = (int) lua_tonumber(L, 1);
+
+  if (n < 1) n = 1;
+  if (n > 256) n = 256;
+  fft_fill_pcm(pcm, n);
+  lua_settop(L, 0);
+  lua_newtable(L);
+  for (i = 0; i < n; ++i) {
+    lua_pushnumber(L, pcm[i] * (1.0f / 32768.0f));
+    lua_rawseti(L, 1, i + 1);
+  }
+  return 1;
+}
+
 static int init;
 
 static int lua_init(lua_State * L)
@@ -359,6 +494,10 @@ static int lua_shutdown(lua_State * L)
   }
   init = 0;
   printf("display_driver_shutdown called\n");
+  if (dc99_mouse_registered) {
+    maple_driver_unreg(&dc99_mouse_drv);
+    dc99_mouse_registered = 0;
+  }
 
   lua_shutdown_dl_type(L);
   lua_shutdown_matrix_type(L);
@@ -598,6 +737,27 @@ static luashell_command_description_t display_commands[] = {
     "[, [ texture-id, ] [ opacity-mode ] ] ) : draw a strip",
     /* function */
     SHELL_COMMAND_C, lua_draw_strip
+  },
+  /* DC99: music levels for Lua visualizers */
+  {
+    "fft_bands",0,0,
+    "fft_bands(n) : returns a table of n band levels (1 to 64, low to high "
+    "frequencies) and the loudness.",
+    SHELL_COMMAND_C, lua_fft_bands
+  },
+  {
+    "fft_pcm",0,0,
+    "fft_pcm(n) : returns a table of n samples (1 to 256) of the sound "
+    "being played, between -1 and 1.",
+    SHELL_COMMAND_C, lua_fft_pcm
+  },
+  /* DC99: mouse */
+  {
+    "mouse_get",0,0,
+    "mouse_get() : read the mouse. Returns dx, dy, dz, left, right, "
+    "left_pressed, right_pressed (movement and clicks since the last "
+    "call) or nothing when no mouse is plugged.",
+    SHELL_COMMAND_C, lua_mouse_get
   },
   /* built-in command interface */
   {
