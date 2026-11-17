@@ -6,6 +6,6 @@
 # $Id: Makefile,v 1.9 2003-01-21 13:07:33 zigziggy Exp $
 #
 
-SUBDIRS = fftvlr lpo hyperpipe fime
+SUBDIRS = fftvlr lpo hyperpipe fime dc99vis
 
 include ../../Makefile.inc
