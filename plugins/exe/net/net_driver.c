@@ -29,6 +29,7 @@ static int netinit;
 static int lwipinit;
 
 static int driver_shutdown(any_driver_t * d);
+void chat_shutdown(void);
 
 
 static net_input_func saved_rx_callback;
@@ -310,6 +311,7 @@ static int driver_init(any_driver_t *d)
 static int driver_shutdown(any_driver_t * d)
 {
   printf("%s_driver_shutdown ... \n", d->name);
+  chat_shutdown();
 
   return 0;
 }
@@ -717,6 +719,32 @@ static int lua_dma(lua_State * L)
   return 0;
 }
 
+/* chat.c */
+int lua_chat_cfg(lua_State * L);
+int lua_chat_irc_start(lua_State * L);
+int lua_chat_irc_stop(lua_State * L);
+int lua_chat_irc_state(lua_State * L);
+int lua_chat_irc_users(lua_State * L);
+int lua_chat_irc_typers(lua_State * L);
+int lua_chat_irc_hue(lua_State * L);
+int lua_chat_irc_typing(lua_State * L);
+int lua_chat_irc_say(lua_State * L);
+int lua_chat_poll(lua_State * L);
+int lua_chat_kos_server(lua_State * L);
+int lua_chat_kos_refresh(lua_State * L);
+int lua_chat_kos_login(lua_State * L);
+int lua_chat_kos_say(lua_State * L);
+int lua_chat_kos_list(lua_State * L);
+int lua_chat_dc99net(lua_State * L);
+int lua_chat_dbg(lua_State * L);
+int lua_chat_feed(lua_State * L);
+int lua_chat_feed_body(lua_State * L);
+int lua_chat_time(lua_State * L);
+int lua_chat_http(lua_State * L);
+int lua_chat_test(lua_State * L);
+int lua_chat_test_log(lua_State * L);
+void chat_shutdown(void);
+
 static luashell_command_description_t driver_commands[] = {
 
   /* Internal commands */
@@ -832,7 +860,144 @@ static luashell_command_description_t driver_commands[] = {
   },
 
 
- 
+  {
+    "chat_cfg", 0, 0,
+    "chat_cfg([t]) : chat settings (host port nick pass hue ts sys ignore).",
+    SHELL_COMMAND_C, lua_chat_cfg
+  },
+
+  {
+    "chat_irc_start", 0, 0,
+    "chat_irc_start([settings]) : connect to IRC #dc99.",
+    SHELL_COMMAND_C, lua_chat_irc_start
+  },
+
+  {
+    "chat_irc_stop", 0, 0,
+    "chat_irc_stop() : leave IRC.",
+    SHELL_COMMAND_C, lua_chat_irc_stop
+  },
+
+  {
+    "chat_irc_state", 0, 0,
+    "chat_irc_state() : state (0 off 1 connecting 2 logging in 3 in 4 failed), message, nick, people.",
+    SHELL_COMMAND_C, lua_chat_irc_state
+  },
+
+  {
+    "chat_irc_users", 0, 0,
+    "chat_irc_users() : people in #dc99.",
+    SHELL_COMMAND_C, lua_chat_irc_users
+  },
+
+  {
+    "chat_irc_typers", 0, 0,
+    "chat_irc_typers() : who is typing.",
+    SHELL_COMMAND_C, lua_chat_irc_typers
+  },
+
+  {
+    "chat_irc_hue", 0, 0,
+    "chat_irc_hue(nick) : name colour (0-359).",
+    SHELL_COMMAND_C, lua_chat_irc_hue
+  },
+
+  {
+    "chat_irc_typing", 0, 0,
+    "chat_irc_typing(conv) : say we are typing.",
+    SHELL_COMMAND_C, lua_chat_irc_typing
+  },
+
+  {
+    "chat_irc_say", 0, 0,
+    "chat_irc_say(conv, text) : send a line (commands too).",
+    SHELL_COMMAND_C, lua_chat_irc_say
+  },
+
+  {
+    "chat_poll", 0, 0,
+    "chat_poll() : chat news since last time.",
+    SHELL_COMMAND_C, lua_chat_poll
+  },
+
+  {
+    "chat_kos_server", 0, 0,
+    "chat_kos_server(host, port, path) : KosNet feed address.",
+    SHELL_COMMAND_C, lua_chat_kos_server
+  },
+
+  {
+    "chat_kos_refresh", 0, 0,
+    "chat_kos_refresh() : read KosNet global chat.",
+    SHELL_COMMAND_C, lua_chat_kos_refresh
+  },
+
+  {
+    "chat_kos_login", 0, 0,
+    "chat_kos_login(user, password) : sign in to KosNet.",
+    SHELL_COMMAND_C, lua_chat_kos_login
+  },
+
+  {
+    "chat_kos_say", 0, 0,
+    "chat_kos_say(token, text) : post on KosNet.",
+    SHELL_COMMAND_C, lua_chat_kos_say
+  },
+
+  {
+    "chat_kos_list", 0, 0,
+    "chat_kos_list() : the KosNet messages.",
+    SHELL_COMMAND_C, lua_chat_kos_list
+  },
+
+  {
+    "chat_feed", 0, 0,
+    "chat_feed(query) : read the server feed (a \"feed\" event, then chat_feed_body()).",
+    SHELL_COMMAND_C, lua_chat_feed
+  },
+
+  {
+    "chat_feed_body", 0, 0,
+    "chat_feed_body() : the last feed answer and its query.",
+    SHELL_COMMAND_C, lua_chat_feed_body
+  },
+
+  {
+    "chat_test", 0, 0,
+    "chat_test() : run the connection test.",
+    SHELL_COMMAND_C, lua_chat_test
+  },
+
+  {
+    "chat_test_log", 0, 0,
+    "chat_test_log() : the connection test's lines, and 1 when done.",
+    SHELL_COMMAND_C, lua_chat_test_log
+  },
+
+  {
+    "chat_http", 0, 0,
+    "chat_http(host, path, query) : plain HTTP GET (a \"feed\" event \"http\", then chat_feed_body()).",
+    SHELL_COMMAND_C, lua_chat_http
+  },
+
+  {
+    "chat_time", 0, 0,
+    "chat_time() : the console clock in seconds since 1970.",
+    SHELL_COMMAND_C, lua_chat_time
+  },
+
+  {
+    "chat_dbg", 0, 0,
+    "chat_dbg(text) : write a line on the serial port.",
+    SHELL_COMMAND_C, lua_chat_dbg
+  },
+
+  {
+    "chat_dc99net", 0, 0,
+    "chat_dc99net() : the DC99 app settings on the memory card.",
+    SHELL_COMMAND_C, lua_chat_dc99net
+  },
+
   {0},                                    /* end of the command list */
 };
 
