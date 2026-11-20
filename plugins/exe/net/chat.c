@@ -1072,6 +1072,8 @@ static void irc_handle(char *line)
 static char *rxq;
 static int rx_len;
 
+#define IRC_PER_POLL 6
+
 static void irc_pump(void)
 {
   static char work[RXQ + 1];
@@ -1080,8 +1082,14 @@ static void irc_pump(void)
   if (!rxq) return;
   ev_lock();
   if (rx_len) {
-    /* whole lines only */
-    for (k = rx_len; k > 0 && rxq[k - 1] != '\n'; k--) ;
+    /* whole lines only, and at most IRC_PER_POLL of them : a burst (the
+       welcome text, channel history) is spread over several frames so the
+       music and the picture never wait for it */
+    int lines = 0;
+    for (k = 0; k < rx_len; k++)
+      if (rxq[k] == '\n' && ++lines >= IRC_PER_POLL) break;
+    if (k < rx_len) k++;		/* keep the last newline */
+    else for (k = rx_len; k > 0 && rxq[k - 1] != '\n'; k--) ;
     if (k > 0) {
       memcpy(work, rxq, k);
       mv(rxq, rxq + k, rx_len - k);
@@ -1163,6 +1171,16 @@ static void irc_thread(void *arg)
     if (irc_state == 2 && ms_now() - t0 > 20000) {
       irc_fail("Connected, but the IRC server never finished the login.");
       break;
+    }
+    {
+      int full;
+      ev_lock();
+      full = rx_len + RBUF > RXQ;
+      ev_unlock();
+      if (full) {		/* the main side catches up first */
+	thd_sleep(20);
+	continue;
+      }
     }
     if (!wait_read(s, 100))
       continue;

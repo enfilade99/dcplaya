@@ -450,7 +450,7 @@ function radio_draw_weather(r)
       if w.msg then
 	 radio_text(dl, 48, 140 + w.results.n * 23, 14, c.dim, w.msg)
       end
-      if r.chat and r.chat.osk_on then rchat_draw_osk(r, 300)
+      if r.chat and r.chat.osk_on then rchat_show_osk(r, 300)
       elseif w.picked and w.results.n > 0 then
 	 radio_draw_hints(r, { { "A", "Choose", "a" }, { "^v", "Pick" },
 			       { "B", "Type again", "b" } })

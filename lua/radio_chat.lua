@@ -266,9 +266,22 @@ function rchat_update(r, frametime)
    local ch = r.chat
    if not ch or not chat_poll then return end
    local ev = chat_poll()
-   if ev then
+   if ev and ev.n > 0 then
+      -- a burst of lines (logging in, channel history) redraws the screen
+      -- at most five times a second, not every frame
+      local was = r.dirty
       local i
       for i = 1, ev.n do rchat_event(r, ev[i]) end
+      if r.dirty and not was then
+	 r.dirty = nil
+	 ch.pend = 1
+      end
+   end
+   ch.redraw_t = (ch.redraw_t or 0) - frametime
+   if ch.pend and ch.redraw_t <= 0 then
+      ch.pend = nil
+      ch.redraw_t = 0.2
+      r.dirty = 1
    end
    if r.chat_toast then
       r.chat_toast.t = r.chat_toast.t - frametime
@@ -552,7 +565,7 @@ rchat_osk_rows = {
    "asdfghjkl'@",
    "zxcvbnm,.?!",
 }
-rchat_osk_kw, rchat_osk_kh = 50, 30
+rchat_osk_kw, rchat_osk_kh = 50, 28
 
 function ch_osk_off(r)
    if r.chat then r.chat.osk_on = nil end
@@ -618,8 +631,8 @@ function rchat_osk_press(r, row, col)
       if f and strlen(t[f]) < max then t[f] = t[f] .. " " end
    elseif b[2] == "del" then
       if f and strlen(t[f]) > 0 then t[f] = strsub(t[f], 1, strlen(t[f]) - 1) end
-   elseif b[2] == "act" then osk_enter(r)
-   elseif b[2] == "close" then ch_osk_off(r)
+   elseif b[2] == "act" then osk_enter(r) r.dirty = 1
+   elseif b[2] == "close" then ch_osk_off(r) r.dirty = 1
    end
 end
 
@@ -630,6 +643,8 @@ function rchat_osk_key(r, key)
    if not osk_target(r) then ch_osk_off(r) return end
    local row, col = ch.osk_row or 2, ch.osk_col or 1
    local ncol = (row == 5 and 5) or 11
+   local f0, t0 = osk_target(r)
+   local before = f0 and t0[f0]
    if gui_keyup[key] then
       row = row - 1
       if row < 1 then row = 5 end
@@ -651,6 +666,7 @@ function rchat_osk_key(r, key)
 	 t[f] = strsub(t[f], 1, strlen(t[f]) - 1)
       else
 	 ch_osk_off(r)
+	 r.dirty = 1
       end
    elseif gui_keyselect[key] then
       ch.osk_shift = (not ch.osk_shift) or nil
@@ -677,13 +693,26 @@ function rchat_osk_key(r, key)
       col = min(11, x + 1)
    end
    ch.osk_row, ch.osk_col = row, col
-   r.dirty = 1
+   if not ch.osk_on then r.dirty = 1 end
+   if not r.dirty then
+      -- only the keyboard changes now ; the screen follows after a pause
+      r.odirty = 1
+      local f1, t1 = osk_target(r)
+      if f1 ~= f0 or (f1 and t1[f1] ~= before) then
+	 r.lazy = 0.6
+      end
+   end
    return 1
 end
 
-function rchat_draw_osk(r, y)
+-- the keyboard is drawn later, in its own list (radio_draw_overlay)
+function rchat_show_osk(r, y)
+   r.osk_y = y
+end
+
+function rchat_draw_osk(r, y, dl)
    local ch = r.chat
-   local dl = r.back
+   dl = dl or r.back
    local c = radio_col
    local kw, kh = rchat_osk_kw, rchat_osk_kh
    local x0 = 320 - floor(kw * 11 / 2)
@@ -696,18 +725,18 @@ function rchat_draw_osk(r, y)
       for j = 1, 11 do
 	 local k = strsub(s, j, j)
 	 if ch.osk_shift then k = strupper(k) end
-	 local x, yy = x0 + (j - 1) * kw, y + (i - 1) * (kh + 4)
+	 local x, yy = x0 + (j - 1) * kw, y + (i - 1) * (kh + 3)
 	 local on = (row == i and col == j)
 	 radio_frame(dl, x + 2, yy, kw - 4, kh, (on and c.sel) or c.fill,
 		     (on and c.frame) or c.dark, (on and c.sel2) or c.fill2)
-	 radio_text(dl, x + floor((kw - radio_width(k, 18)) / 2), yy + 5, 18,
+	 radio_text(dl, x + floor((kw - radio_width(k, 18)) / 2), yy + 4, 18,
 		    (on and c.white) or c.text, k)
 	 radio_hit(r, x + 2, yy, kw - 4, kh, "cosk", i * 100 + j)
       end
    end
    local b = rchat_osk_bottom(r)
    local x = x0
-   local yy = y + 4 * (kh + 4)
+   local yy = y + 4 * (kh + 3)
    for j = 1, getn(b) do
       local w = b[j][3] * kw
       local on = (row == 5 and col == j)
@@ -716,14 +745,23 @@ function rchat_draw_osk(r, y)
 		  (on and c.sel) or (act and c.sel2) or c.fill,
 		  (on and c.frame) or (act and c.frame) or c.dark,
 		  (on and c.sel2) or c.fill2)
-      radio_text(dl, x + floor((w - radio_width(b[j][1], 14)) / 2), yy + 8, 14,
+      radio_text(dl, x + floor((w - radio_width(b[j][1], 14)) / 2), yy + 7, 14,
 		 (on and c.white) or (act and c.white) or c.text, b[j][1])
       radio_hit(r, x + 2, yy, w - 4, kh, "cosk", 500 + j)
       x = x + w
    end
-   radio_text(dl, x0, yy + kh + 6, 12, c.dim,
-	      "A : PRESS    B : DELETE    X : SHIFT    Y : SPACE    ENTER on a keyboard : "
-		 .. rchat_osk_action(r))
+   -- what is being typed, right here (the field above catches up when
+   -- the typing pauses)
+   local f, t = osk_target(r)
+   local help = "A PRESS  B DEL  X SHIFT  Y SPACE"
+   local hw = radio_width(help, 12)
+   radio_text(dl, x0 + 11 * kw - hw, yy + kh + 5, 12, c.dim, help)
+   if f then
+      local v = t[f] or ""
+      if f == "pass" or f == "pw" then v = strrep("*", strlen(v)) end
+      radio_text(dl, x0, yy + kh + 3, 14, c.white,
+		 rchat_tail(v .. "_", 14, 11 * kw - hw - 16))
+   end
 end
 
 function rchat_scroll(r, d)
@@ -803,7 +841,7 @@ function rchat_key(r, key)
       rchat_enter(r)
       return
    end
-   if ch.osk_on and key ~= KBD_ESC and rchat_osk_key(r, key) then return end
+   if ch.osk_on and key ~= KBD_ESC and rchat_osk_key(r, key) then return 1 end
    if key == KBD_ESC then
       if ch.osk_on then ch_osk_off(r)
       elseif ch.view == 2 and ch.kform then ch.kform = nil
@@ -1357,7 +1395,7 @@ function radio_draw_chat(r)
       note = ch.knote
    end
    rchat_draw_compose(r, cy)
-   if kb then rchat_draw_osk(r, 300) end
+   if kb then rchat_show_osk(r, 300) end
    if note and not kb then
       local col = (ch.kbad and rchat_bad) or c.dim
       radio_text(dl, 30, 428, 12, col, radio_fit(note, 12, 580))

@@ -438,6 +438,7 @@ end
 function radio_dialog(r, f, arg, arg2)
    r.modal = 1
    dl_set_active2(r.back, r.front, 0)
+      if r.oback then dl_set_active2(r.oback, r.ofront, 0) end
    dl_set_active(r.cursor, 0)
    f(arg, arg2)
    r.modal = nil
@@ -1347,6 +1348,7 @@ function radio_draw(r)
    dl_clear(r.back)
    r.hits = { n = 0 }
    r.hints_done = nil
+   r.osk_y = nil
    if r.mode == "browse" then
       radio_draw_browse(r)
    elseif r.mode == "chat" and radio_draw_chat then
@@ -1379,6 +1381,26 @@ function radio_draw(r)
    dl_set_active2(r.back, r.front, 1)
    r.back, r.front = r.front, r.back
    r.dirty = nil
+   r.lazy = nil
+   radio_draw_overlay(r)
+end
+
+-- The on-screen keyboard has its own little display list : moving on it
+-- or typing redraws only the keyboard, not the whole screen. The screen
+-- under it catches up once the typing pauses (r.lazy).
+function radio_draw_overlay(r)
+   if not r.oback then return end
+   dl_clear(r.oback)
+   r.ohits = { n = 0 }
+   if r.osk_y and not r.menu and rchat_draw_osk then
+      local hits = r.hits
+      r.hits = r.ohits
+      rchat_draw_osk(r, r.osk_y, r.oback)
+      r.hits = hits
+   end
+   dl_set_active2(r.oback, r.ofront, 1)
+   r.oback, r.ofront = r.ofront, r.oback
+   r.odirty = nil
 end
 
 -- Show or hide this screen; the other dcplaya panels do the opposite.
@@ -1395,6 +1417,7 @@ function radio_show(r, on)
       r.dirty = 1
    else
       dl_set_active2(r.back, r.front, 0)
+      if r.oback then dl_set_active2(r.oback, r.ofront, 0) end
       dl_set_active(r.cursor, 0)
       -- the old panels come back only when "Classic dcplaya menus" was
       -- chosen; a viewer or a dialog opened from our menu leaves them asleep
@@ -1441,6 +1464,7 @@ function radio_hud(r, on)
       r.dirty = 1
    else
       dl_set_active2(r.back, r.front, 0)
+      if r.oback then dl_set_active2(r.oback, r.ofront, 0) end
       dl_set_active(r.cursor, 0)
       r.mouse_on = nil
    end
@@ -1527,6 +1551,14 @@ end
 
 function radio_hit_at(r, x, y)
    local i
+   if r.ohits then
+      for i = getn(r.ohits), 1, -1 do
+	 local h = r.ohits[i]
+	 if x >= h[1] and x < h[3] and y >= h[2] and y < h[4] then
+	    return h
+	 end
+      end
+   end
    for i = getn(r.hits), 1, -1 do
       local h = r.hits[i]
       if x >= h[1] and x < h[3] and y >= h[2] and y < h[4] then
@@ -1753,8 +1785,14 @@ function radio_update(r, frametime)
 	 r.dirty = 1
       end
    end
+   if r.lazy then
+      r.lazy = r.lazy - frametime
+      if r.lazy <= 0 then r.dirty = 1 end
+   end
    if r.dirty then
       radio_draw(r)
+   elseif r.odirty and not r.hud_off and not r.modal then
+      radio_draw_overlay(r)
    end
 end
 
@@ -1763,6 +1801,7 @@ function radio_handle(r, evt)
 
    if key == evt_shutdown_event then
       dl_set_active2(r.back, r.front, 0)
+      if r.oback then dl_set_active2(r.oback, r.ofront, 0) end
       dl_set_active(r.cursor, 0)
       return evt
    elseif key == gui_focus_event or key == gui_unfocus_event then
@@ -1804,8 +1843,8 @@ function radio_handle(r, evt)
       return
    end
    if r.mode == "chat" and not r.menu and rchat_key then
-      rchat_key(r, key)
-      r.dirty = 1
+      -- the keyboard on screen asks for its own redraws
+      if not rchat_key(r, key) then r.dirty = 1 end
       return
    end
    if r.mode == "online" and not r.menu and dash_online_key then
@@ -1935,6 +1974,10 @@ function radio_create(owner)
    r.back = dl_new_list(65536, 0)
    dl_set_trans(r.front, mat_trans(0, 0, radio_z))
    dl_set_trans(r.back, mat_trans(0, 0, radio_z))
+   r.ofront = dl_new_list(16384, 0)
+   r.oback = dl_new_list(16384, 0)
+   dl_set_trans(r.ofront, mat_trans(0, 0, radio_z + 26))
+   dl_set_trans(r.oback, mat_trans(0, 0, radio_z + 26))
    radio_make_cursor(r)
    r.st = radio_load_list(radio_list_filename)
    radio_load_cfg(r)
