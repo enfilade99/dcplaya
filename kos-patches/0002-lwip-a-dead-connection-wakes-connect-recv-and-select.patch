@@ -1,0 +1,283 @@
+From 7035197548b6c896ab323338fcf3d003b4a8d0fc Mon Sep 17 00:00:00 2001
+From: enfilade <enfilade99@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 23:40:07 -0400
+Subject: [PATCH] lwip: a dead connection wakes connect(), recv() and select()
+ (err_tcp)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01X65jKC8rk4j3Xy5T4kZSGp
+---
+ addons/lwip/kos/kossockets.c | 107 +++++++++++++++++++++++++++++++----
+ 1 file changed, 97 insertions(+), 10 deletions(-)
+
+diff --git a/addons/lwip/kos/kossockets.c b/addons/lwip/kos/kossockets.c
+index 0db5db4..7a91f63 100644
+--- a/addons/lwip/kos/kossockets.c
++++ b/addons/lwip/kos/kossockets.c
+@@ -15,6 +15,18 @@
+ #include <errno.h>
+ #include <lwip/lwip.h>
+ #include <lwip/sockets.h>
++#include <arch/irq.h>
++
++/* DC99 : lwIP has no lock of its own, and several program threads use it
++   (radio stream, Dreamcast Now ping, chat, dashboard feed). Two of them
++   inside lwIP at once (two connects, say) can corrupt its lists : seen as
++   a console freeze. Program threads now enter lwIP core one at a time.
++   (Callbacks never run while this is held, so it can't deadlock with the
++   per-socket mutexes. The packet thread is left as it always was :
++   turning interrupts off around it broke connect on the BBA.) */
++static mutex_t * lw_app;
++#define LW_LOCK()	int lw_old = (lw_app ? mutex_lock(lw_app) : 0)
++#define LW_UNLOCK()	do { (void)lw_old; if (lw_app) mutex_unlock(lw_app); } while (0)
+ 
+ /////////////////////////////////////////////////////////////////////////////
+ // Socket descriptors; we will eventually merge these with the VFS.
+@@ -117,8 +129,10 @@ static void sock_close(int fd) {
+ 
+ 	// VP : this was missing :)
+ 	if (fds[fd].recv_buf) {
++	  LW_LOCK();
+ 	  pbuf_free(fds[fd].recv_buf);
+ 	  fds[fd].recv_buf = NULL;
++	  LW_UNLOCK();
+ 	}
+ }
+ 
+@@ -275,8 +289,26 @@ static err_t poll_tcp(void *arg, struct tcp_pcb *pcb) {
+ 	return ERR_OK;
+ }
+ 
++/* DC99 : lwIP calls this when a connection dies (reset by the other end,
++   or no answer). The pcb is already freed : forget it, end a connect() that
++   is waiting, and let readers see the end once the data is read. */
+ static void err_tcp(void *arg, err_t err) {
+-	// printf("kti: err_tcp for %d called (err %d)\n", (int)arg, err);
++	sockfd_t	* fd;
++	int		s = (int)arg;
++
++	if (sock_verify(s) < 0)
++		return;
++	fd = fds + s;
++	mutex_lock(fd->mutex);
++	fd->tcppcb = NULL;
++	if (fd->connerr > 0)
++		fd->connerr = err < 0 ? err : ERR_ABRT;
++	fd->closed = 1; fd->send = -1;
++	cond_broadcast(fd->connect);
++	cond_broadcast(fd->recv_avail);
++	cond_broadcast(fd->send_avail);
++	mutex_unlock(fd->mutex);
++	genwait_wake_all(&select_wait);
+ }
+ 
+ static err_t accept_tcp(void *arg, struct tcp_pcb *pcb, err_t err) {
+@@ -437,6 +469,7 @@ static int close_common(int s) {
+ 	mutex_lock(fds[s].mutex);
+ 
+ 	// Close off any lwIP hooks
++	LW_LOCK();
+ 	if (fds[s].tcppcb) {
+ 		struct tcp_pcb * pcb = fds[s].tcppcb;
+ 
+@@ -459,6 +492,7 @@ static int close_common(int s) {
+ 		fds[s].udppcb->recv_arg = NULL;
+ 		udp_remove(fds[s].udppcb);
+ 	}
++	LW_UNLOCK();
+ 
+ 	// Free unanswered backlog connections as well
+ 	if (fds[s].conns) {
+@@ -518,8 +552,15 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen) {
+ 	case SOCK_STREAM:
+ 		// This might have gotten made already, bind is valid on
+ 		// outgoing sockets too.
++		{
++		LW_LOCK();
+ 		if (!fd->tcppcb)
+ 			fd->tcppcb = tcp_new();
++		if (!fd->tcppcb) {
++			LW_UNLOCK();
++			errno = ENOMEM;
++			rv = -1; goto out;
++		}
+ 		tcp_arg(fd->tcppcb, (void *)s);
+ 		tcp_recv(fd->tcppcb, recv_tcp);
+ 		tcp_sent(fd->tcppcb, sent_tcp);
+@@ -529,17 +570,24 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen) {
+ 			if (tcp_close(fd->tcppcb) != ERR_OK)
+ 				tcp_abort(fd->tcppcb);
+ 			fd->tcppcb = NULL;
++			LW_UNLOCK();
+ 			errno = EINVAL;
+ 			rv = -1; goto out;
+ 		}
++		LW_UNLOCK();
++		}
+ 		break;
+ 	case SOCK_DGRAM:
+ 		// This might have gotten made already, bind is valid on
+ 		// outgoing sockets too.
++		{
++		LW_LOCK();
+ 		if (!fd->udppcb)
+ 			fd->udppcb = udp_new();
+ 		udp_recv(fd->udppcb, recv_udp, (void *)s);
+ 		udp_connect(fd->udppcb, &ip, ntohs(port));
++		LW_UNLOCK();
++		}
+ 		break;
+ 	default:
+ 		assert( 0 );
+@@ -557,8 +605,10 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen) {
+ 			cond_wait_timed(fd->connect, fd->mutex, 4000);
+ 			if (fd->connerr > 0) {
+ 			  printf("connect : connerr = %d\n", fd->connerr);
+-			  if (tcp_close(fd->tcppcb) != ERR_OK)
++			  LW_LOCK();
++			  if (fd->tcppcb && tcp_close(fd->tcppcb) != ERR_OK)
+ 			    tcp_abort(fd->tcppcb);
++			  LW_UNLOCK();
+ 			  fd->tcppcb = NULL;
+ 			  errno = EINVAL; // TODO : set a correct errno 
+ 			                  // (keep the one of cond_wait_timed ?)
+@@ -883,6 +933,8 @@ static int recv_common(int s, void * mem, int len, unsigned int flags, int istcp
+ 		len -= amt;
+ 
+ 		// Did we take the whole thing?
++		{
++		LW_LOCK();
+ 		if (amt == p->len) {
+ 			// Yes. Dechain it and move forwards.
+ 			fd->recv_buf = p->next;
+@@ -895,13 +947,19 @@ static int recv_common(int s, void * mem, int len, unsigned int flags, int istcp
+ 			pbuf_header(p, -amt);
+ 			p = NULL;
+ 		}
++		LW_UNLOCK();
++		}
+ 	}
+ 
+ 	// ACK the amount we actually read out
+ 	//printf("lwip_read(%d): ACK'ing %d bytes\n", s, totalrcv);
+ 	rv = totalrcv;
+-	if (istcp)
+-		tcp_recved(fd->tcppcb, rv);
++	if (istcp && fd->tcppcb) {
++		LW_LOCK();
++		if (fd->tcppcb)
++			tcp_recved(fd->tcppcb, rv);
++		LW_UNLOCK();
++	}
+ 	fd->recv -= rv;
+ 	//printf("returning\n");
+ 
+@@ -941,7 +999,12 @@ static int send_common(int s, const void *mem, int size, unsigned int flags) {
+ 		size = fd->send;
+ 
+ 	// Do it
+-	err = tcp_write(fd->tcppcb, (void *)mem, size, 1);
++	{
++		LW_LOCK();
++		err = fd->tcppcb ? tcp_write(fd->tcppcb, (void *)mem, size, 1)
++			: ERR_CLSD;
++		LW_UNLOCK();
++	}
+ 	switch (err) {
+ 	case ERR_OK:
+ 		break;
+@@ -1034,7 +1097,7 @@ static int select_poll(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *e
+ 				}
+ 			} else {
+ 				// Any data available? Or socket dead?
+-				if (fds[s].recv != 0) {
++				if (fds[s].recv != 0 || fds[s].closed) {
+ 					FD_SET(i, &nr);
+ 					cnt++;
+ 				}
+@@ -1096,8 +1159,8 @@ int lwip_select(int maxfdp1, fd_set *readset, fd_set *writeset, fd_set *exceptse
+ 				break;
+ 			else if (!timeout)
+ 				genwait_wait(&select_wait, "lwip_select", 0, NULL);
+-			else
+-				genwait_wait(&select_wait, "lwip_select", tmo, NULL);
++			else if (genwait_wait(&select_wait, "lwip_select", tmo, NULL) < 0)
++				break;	/* DC99 : the time is up (it used to wait forever) */
+ 		}
+ 	} while (rv == 0);
+ 
+@@ -1190,6 +1253,8 @@ int lwip_sendto(int s, const void *dataptr, int size, unsigned int flags,
+ 		rv = -1; goto out;
+ 	}
+ 
++	{
++	LW_LOCK();
+ 	// We might not have a udppcb still, if we just did socket().
+ 	if (!fd->udppcb)
+ 		fd->udppcb = udp_new();
+@@ -1204,6 +1269,7 @@ int lwip_sendto(int s, const void *dataptr, int size, unsigned int flags,
+ 
+ 	// Connect this to the specified destination.
+ 	if ((err = udp_connect(fd->udppcb, &ip, ntohs(port))) != ERR_OK) {
++		LW_UNLOCK();
+ 		printf("connect: err is %d\n", err);
+ 		// XXX Imprecise
+ 		errno = ENOMEM;
+@@ -1213,6 +1279,7 @@ int lwip_sendto(int s, const void *dataptr, int size, unsigned int flags,
+ 	// Make a pbuf for the data we want to send.
+ 	pbuf = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
+ 	if (pbuf == NULL) {
++		LW_UNLOCK();
+ 		printf("couldn't alloc pbuf of size %d\n", size);
+ 		errno = ENOMEM;
+ 		rv = -1; goto out;
+@@ -1232,6 +1299,8 @@ int lwip_sendto(int s, const void *dataptr, int size, unsigned int flags,
+ 
+ 	// Send the data on the socket.
+ 	if ((err = udp_send(fd->udppcb, pbuf)) != ERR_OK) {
++		pbuf_free(pbuf); pbuf = NULL;
++		LW_UNLOCK();
+ 		printf("send: err is %d\n", err);
+ 		// XXX Imprecise
+ 		errno = ENOMEM;
+@@ -1240,10 +1309,10 @@ int lwip_sendto(int s, const void *dataptr, int size, unsigned int flags,
+ 
+ 	// Let go of the pbuf before returning.
+ 	pbuf_free(pbuf); pbuf = NULL;
++	LW_UNLOCK();
++	}
+ 
+ out:
+-	if (pbuf)
+-		pbuf_free(pbuf);
+ 	mutex_unlock(fd->mutex);	
+ 	return rv;
+ }
+@@ -1284,6 +1353,24 @@ void tcp_timer_needed() {
+ 
+ int kti_init() {
+ 	fd_mutex = mutex_create();
++	lw_app = mutex_create();
+ 	return 0;
+ }
+ #endif
++
++
++/* DC99 : how much can be read from socket fd without waiting.
++   > 0 : bytes waiting, 0 : nothing yet, -1 : closed, or not a socket.
++   Lets a thread poll with thd_sleep() instead of select(). */
++int lwip_dc99_pending(int fdn) {
++	int s = sock_for_fd(fdn);
++	sockfd_t * fd;
++	if (s < 0)
++		return -1;
++	fd = fds + s;
++	if (fd->recv > 0)
++		return fd->recv;
++	if (fd->recv < 0 || fd->closed)
++		return -1;
++	return 0;
++}
+-- 
+2.43.0
+

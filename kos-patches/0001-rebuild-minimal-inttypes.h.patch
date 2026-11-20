@@ -1,0 +1,45 @@
+From 673261b176ed6e5cbe78080f579cf12dac3e3283 Mon Sep 17 00:00:00 2001
+From: enfilade <enfilade99@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 13:03:13 -0400
+Subject: [PATCH] rebuild: minimal inttypes.h
+
+---
+ libc/include/inttypes.h | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+ create mode 100644 libc/include/inttypes.h
+
+diff --git a/libc/include/inttypes.h b/libc/include/inttypes.h
+new file mode 100644
+index 0000000..f39f0ef
+--- /dev/null
++++ b/libc/include/inttypes.h
+@@ -0,0 +1,26 @@
++/* KallistiOS (dcplaya fork) -- inttypes.h
++   DC99 rebuild: minimal <inttypes.h> so ffmpeg builds with a modern compiler
++   (the fixed-size types come from the compiler's own <stdint.h>). */
++#ifndef __INTTYPES_H
++#define __INTTYPES_H
++
++#include <stdint.h>
++
++#define PRId8 "d"
++#define PRId16 "d"
++#define PRId32 "d"
++#define PRId64 "lld"
++#define PRIi32 "i"
++#define PRIi64 "lli"
++#define PRIu8 "u"
++#define PRIu16 "u"
++#define PRIu32 "u"
++#define PRIu64 "llu"
++#define PRIx8 "x"
++#define PRIx16 "x"
++#define PRIx32 "x"
++#define PRIx64 "llx"
++#define PRIX32 "X"
++#define PRIX64 "llX"
++
++#endif
+-- 
+2.43.0
+
