@@ -1,0 +1,339 @@
+From e58e30e31d5004a4bf5ce6c630761d6a48c82bb6 Mon Sep 17 00:00:00 2001
+From: enfilade <enfilade99@users.noreply.github.com>
+Date: Wed, 25 Nov 2026 22:19:20 -0400
+Subject: [PATCH] lwip: one lock for all of lwIP (network thread included)
+
+The network thread handled packets and timers while program threads
+called into lwIP at the same time, corrupting memory after a few hundred
+connections ("SH4 exception when blocked"). Now kosnetif holds the lock
+too; callbacks no longer take the socket mutex (lock order), and waits
+are short slices.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01X65jKC8rk4j3Xy5T4kZSGp
+---
+ addons/lwip/kos/kossockets.c     | 113 +++++++++++++++----------------
+ addons/lwip/kos/netif/kosnetif.c |  12 +++-
+ 2 files changed, 63 insertions(+), 62 deletions(-)
+
+diff --git a/addons/lwip/kos/kossockets.c b/addons/lwip/kos/kossockets.c
+index 7a91f63..3d75471 100644
+--- a/addons/lwip/kos/kossockets.c
++++ b/addons/lwip/kos/kossockets.c
+@@ -28,6 +28,16 @@ static mutex_t * lw_app;
+ #define LW_LOCK()	int lw_old = (lw_app ? mutex_lock(lw_app) : 0)
+ #define LW_UNLOCK()	do { (void)lw_old; if (lw_app) mutex_unlock(lw_app); } while (0)
+ 
++/* DC99 : ONE lock for all of lwIP. The network thread (kosnetif) holds it
++   while it handles packets and timers, the program's threads hold it around
++   every lwIP call. lwIP callbacks therefore always run with it held, and so
++   they do NOT take the socket mutex (that order would deadlock) : socket
++   fields shared with callbacks are only changed with this lock held, and
++   waiters sleep in short slices so a missed wake-up costs at most 50 ms. */
++void lwip_dc99_lock(void) { if (lw_app) mutex_lock(lw_app); }
++void lwip_dc99_unlock(void) { if (lw_app) mutex_unlock(lw_app); }
++#define LW_SLICE 50
++
+ /////////////////////////////////////////////////////////////////////////////
+ // Socket descriptors; we will eventually merge these with the VFS.
+ 
+@@ -189,9 +199,6 @@ static err_t peerclosed_tcp(int s, struct tcp_pcb *pcb) {
+ 	} else {
+ 		fd = fds + s;
+ 
+-		// Get access.
+-		mutex_lock(fd->mutex);
+-
+ 		// Make sure no more reads/writes go through.
+ 		//fd->recv = fd->send = -1;
+ 		fd->closed = 1; fd->send = -1;
+@@ -200,8 +207,6 @@ static err_t peerclosed_tcp(int s, struct tcp_pcb *pcb) {
+ 		cond_broadcast(fd->recv_avail);
+ 		cond_broadcast(fd->send_avail);
+ 
+-		mutex_unlock(fd->mutex);
+-
+ 		genwait_wake_all(&select_wait);
+ 	}
+ 
+@@ -217,9 +222,6 @@ static err_t recv_data(int s, struct pbuf * p) {
+ 		return ERR_CONN;
+ 	fd = fds + s;
+ 
+-	// Get access.
+-	mutex_lock(fd->mutex);
+-
+ 	// Do we already have some data chained up in pbufs?
+ 	if (fd->recv_buf) {
+ 		pbuf_chain(fd->recv_buf, p);
+@@ -232,13 +234,11 @@ static err_t recv_data(int s, struct pbuf * p) {
+ 
+ 	// Here would be the place we'd want to implement TCP_NODELAY (or the lack
+ 	// thereof) but for now we'll just send it all through...
+-	cond_signal(fd->recv_avail);
++	cond_broadcast(fd->recv_avail);
+ 
+ 	// Note that we DON'T ACK the data until after a client has received
+ 	// it using recv(). Otherwise the peer could send and send and send...
+ 
+-	mutex_unlock(fd->mutex);
+-
+ 	genwait_wake_all(&select_wait);
+ 
+ 	return ERR_OK;
+@@ -264,19 +264,15 @@ static err_t sent_tcp(void *arg, struct tcp_pcb *pcb, u32_t len) {
+ 		return ERR_CONN;
+ 	fd = fds + s;
+ 
+-	// Get access.
+-	mutex_lock(fd->mutex);
+-
+ 	// Add more buffer space available.
+-	fd->send += len;
++	if (fd->send >= 0)
++		fd->send += len;
+ 
+ 	// Notify anyone waiting, if we have sufficient space (avoid silly
+ 	// packet syndrome).
+ 	rdy = fd->send >= 256;
+ 	if (rdy)
+-		cond_signal(fd->send_avail);
+-
+-	mutex_unlock(fd->mutex);
++		cond_broadcast(fd->send_avail);
+ 
+ 	if (rdy)
+ 		genwait_wake_all(&select_wait);
+@@ -299,7 +295,6 @@ static void err_tcp(void *arg, err_t err) {
+ 	if (sock_verify(s) < 0)
+ 		return;
+ 	fd = fds + s;
+-	mutex_lock(fd->mutex);
+ 	fd->tcppcb = NULL;
+ 	if (fd->connerr > 0)
+ 		fd->connerr = err < 0 ? err : ERR_ABRT;
+@@ -307,7 +302,6 @@ static void err_tcp(void *arg, err_t err) {
+ 	cond_broadcast(fd->connect);
+ 	cond_broadcast(fd->recv_avail);
+ 	cond_broadcast(fd->send_avail);
+-	mutex_unlock(fd->mutex);
+ 	genwait_wake_all(&select_wait);
+ }
+ 
+@@ -407,16 +401,11 @@ static err_t connect_tcp(void * arg, struct tcp_pcb * pcb, err_t err) {
+ 		return ERR_CONN;
+ 	fd = fds + s;
+ 
+-	// Get access.
+-	mutex_lock(fd->mutex);
+-
+ 	// Set the result error code
+ 	fd->connerr = err;
+ 
+ 	// Signal to proceed
+-	cond_signal(fd->connect);
+-
+-	mutex_unlock(fd->mutex);
++	cond_broadcast(fd->connect);
+ 
+ 	return rv;
+ }
+@@ -554,6 +543,7 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen) {
+ 		// outgoing sockets too.
+ 		{
+ 		LW_LOCK();
++		fd->connerr = 10;	/* before the SYN : the answer may be quick */
+ 		if (!fd->tcppcb)
+ 			fd->tcppcb = tcp_new();
+ 		if (!fd->tcppcb) {
+@@ -599,17 +589,26 @@ int lwip_connect(int s, struct sockaddr *name, socklen_t namelen) {
+ 	// of the operation.
+ 	if (fd->type == SOCK_STREAM) {
+ 		// Wait for the result
+-		fd->connerr = 10;
+-		while (fd->connerr > 0) {
+-		        /* VP : added a timeout */
+-			cond_wait_timed(fd->connect, fd->mutex, 4000);
++		int waited = 0;
++		while (fd->connerr > 0 && waited < 4000) {
++			cond_wait_timed(fd->connect, fd->mutex, LW_SLICE);
++			waited += LW_SLICE;
++		}
++		{
+ 			if (fd->connerr > 0) {
+ 			  printf("connect : connerr = %d\n", fd->connerr);
+ 			  LW_LOCK();
+-			  if (fd->tcppcb && tcp_close(fd->tcppcb) != ERR_OK)
+-			    tcp_abort(fd->tcppcb);
+-			  LW_UNLOCK();
++			  if (fd->tcppcb) {
++			    tcp_arg(fd->tcppcb, NULL);
++			    tcp_recv(fd->tcppcb, NULL);
++			    tcp_sent(fd->tcppcb, NULL);
++			    tcp_poll(fd->tcppcb, NULL, 0);
++			    tcp_err(fd->tcppcb, NULL);
++			    if (tcp_close(fd->tcppcb) != ERR_OK)
++			      tcp_abort(fd->tcppcb);
++			  }
+ 			  fd->tcppcb = NULL;
++			  LW_UNLOCK();
+ 			  errno = EINVAL; // TODO : set a correct errno 
+ 			                  // (keep the one of cond_wait_timed ?)
+ 			  rv = -1; goto out;
+@@ -882,29 +881,25 @@ static int recv_common(int s, void * mem, int len, unsigned int flags, int istcp
+ 	}
+ 
+ 	// Is there data available now?
++	{
++	int waited = 0;
+ 	while (fd->recv <= 0) {
+-	        int res;
+ 		// Make sure we're capable of reading
+ 		if (fd->recv < 0) {
+ 			rv = 0; goto out;
+ 		}
++		if (fd->closed) {
++			fd->recv = -1; rv = -1; goto out;
++		}
+ 
+-		// Wait for more data to be available
+-		//printf("cond_wait for more data\n");
+-
+-		/* VP : added a timeout (10 seconds) */
+-		res = cond_wait_timed(fd->recv_avail, fd->mutex, 10000);
+-		if (res && fd->recv <= 0) {
+-		        if (errno != EAGAIN) {
+-			  printf("recv_common : cond_wait_timeout returned with error "
+-				 "but errno is %d (!= EAGAIN)\n", errno);
+-			}
+-		        printf("recv_common : timeout (cond_wait_timeout returned %d)\n", 
+-			       res);
++		/* VP : a timeout (10 seconds) ; DC99 : in short slices */
++		cond_wait_timed(fd->recv_avail, fd->mutex, LW_SLICE);
++		waited += LW_SLICE;
++		if (fd->recv <= 0 && waited >= 10000) {
++		        printf("recv_common : timeout\n");
+ 			fd->recv = -1; rv = 0; goto out;
+ 		}
+-		
+-		//printf("woken\n");
++	}
+ 	}
+ 
+ 	// Ok, some data should be available now
+@@ -917,6 +912,8 @@ static int recv_common(int s, void * mem, int len, unsigned int flags, int istcp
+ 	// Pull data out into the client buffer
+ 	buf = (uint8 *)mem;
+ 	totalrcv = 0;
++	{
++	LW_LOCK();
+ 	for (p = fd->recv_buf; p && len > 0; ) {
+ 		// How much to pull from this pbuf?
+ 		if (p->len > len)
+@@ -934,7 +931,6 @@ static int recv_common(int s, void * mem, int len, unsigned int flags, int istcp
+ 
+ 		// Did we take the whole thing?
+ 		{
+-		LW_LOCK();
+ 		if (amt == p->len) {
+ 			// Yes. Dechain it and move forwards.
+ 			fd->recv_buf = p->next;
+@@ -947,20 +943,16 @@ static int recv_common(int s, void * mem, int len, unsigned int flags, int istcp
+ 			pbuf_header(p, -amt);
+ 			p = NULL;
+ 		}
+-		LW_UNLOCK();
+ 		}
+ 	}
+ 
+ 	// ACK the amount we actually read out
+-	//printf("lwip_read(%d): ACK'ing %d bytes\n", s, totalrcv);
+ 	rv = totalrcv;
+-	if (istcp && fd->tcppcb) {
+-		LW_LOCK();
+-		if (fd->tcppcb)
+-			tcp_recved(fd->tcppcb, rv);
+-		LW_UNLOCK();
++	if (istcp && fd->tcppcb)
++		tcp_recved(fd->tcppcb, rv);
++	fd->recv = fd->recv_buf ? fd->recv_buf->tot_len : 0;
++	LW_UNLOCK();
+ 	}
+-	fd->recv -= rv;
+ 	//printf("returning\n");
+ 
+ out:
+@@ -991,7 +983,7 @@ static int send_common(int s, const void *mem, int size, unsigned int flags) {
+ 			rv = 0; goto out;
+ 		}
+ 
+-		cond_wait(fd->send_avail, fd->mutex);
++		cond_wait_timed(fd->send_avail, fd->mutex, LW_SLICE);
+ 	}
+ 
+ 	// Send as much as we can.
+@@ -1003,6 +995,8 @@ static int send_common(int s, const void *mem, int size, unsigned int flags) {
+ 		LW_LOCK();
+ 		err = fd->tcppcb ? tcp_write(fd->tcppcb, (void *)mem, size, 1)
+ 			: ERR_CLSD;
++		if (err == ERR_OK && fd->send >= size)
++			fd->send -= size;
+ 		LW_UNLOCK();
+ 	}
+ 	switch (err) {
+@@ -1023,9 +1017,8 @@ static int send_common(int s, const void *mem, int size, unsigned int flags) {
+ 		rv = 0; goto out;
+ 	}
+ 
+-	// Decrease the available space counter
++	// (the available space counter went down with the write)
+ 	rv = size;
+-	fd->send -= size;
+ 
+ out:
+ 	mutex_unlock(fd->mutex);
+diff --git a/addons/lwip/kos/netif/kosnetif.c b/addons/lwip/kos/netif/kosnetif.c
+index 3d97cbe..fc5bfc2 100644
+--- a/addons/lwip/kos/netif/kosnetif.c
++++ b/addons/lwip/kos/netif/kosnetif.c
+@@ -285,6 +285,9 @@ static struct pbuf * pkt_deq() {
+ /* The processing thread. This should ideally run at a better priority than
+    other things to lower latency, but we leave it at normal for now to avoid
+    lockups on bugs. */
++void lwip_dc99_lock(void);
++void lwip_dc99_unlock(void);
++
+ static void kosnetif_thread(void * blegh) {
+ 	struct eth_hdr * ethernet_header;
+ 	struct pbuf *p, *q;
+@@ -295,13 +298,17 @@ static void kosnetif_thread(void * blegh) {
+ 		// so we'll just do our own thing here...
+ 		i = sem_wait_timed(wait_p, 20);
+ 		if (i < 0) {
++			lwip_dc99_lock();
+ 			tcp_tmr();
++			lwip_dc99_unlock();
+ 			continue;
+ 		}
+ 		// sem_wait(wait_p);
++		/* DC99 : all of lwIP runs under one lock (see kossockets.c) */
++		lwip_dc99_lock();
+ 		p = pkt_deq();
+-		if (p == (struct pbuf *)1) break;
+-		if (!p) continue;
++		if (p == (struct pbuf *)1) { lwip_dc99_unlock(); break; }
++		if (!p) { lwip_dc99_unlock(); continue; }
+ 
+ 		ethernet_header = p->payload;
+ 
+@@ -324,6 +331,7 @@ static void kosnetif_thread(void * blegh) {
+ 			low_level_output(netif, q);
+ 			pbuf_free(q);
+ 		}
++		lwip_dc99_unlock();
+ 	}
+ }
+ 
+-- 
+2.43.0
+

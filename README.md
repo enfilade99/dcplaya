@@ -23,7 +23,7 @@ to life on real hardware and adds new features. The original readme is in
 Tested on a real Dreamcast with a Broadband Adapter.
 
 It still builds against DCPlaya's own KallistiOS 1.3 fork,
-[zig/kos-dcplaya](https://github.com/zig/kos-dcplaya), with the two
+[zig/kos-dcplaya](https://github.com/zig/kos-dcplaya), with the
 patches in [`kos-patches/`](kos-patches). **Porting to mainline KallistiOS
 is the next big step, and help is very welcome.** The chat, dashboard
 and weather code in `plugins/exe/net/chat.c` uses the fork's old lwIP
