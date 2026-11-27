@@ -36,9 +36,10 @@ sockets, so that part will need attention in the port.
    `gcc-arm-none-eabi`, `binutils-arm-none-eabi` and `netpbm`.
 2. Check out side by side:
    - this repository
-   - [zig/kos-dcplaya](https://github.com/zig/kos-dcplaya) at
-     `1008d9fd67be30b86ff7b05f0a76218faf7e627b`, with `kos-patches/*.patch`
-     applied (`git am`)
+   - [enfilade99/kos-dcplaya](https://github.com/enfilade99/kos-dcplaya)
+     (DCPlaya's KOS fork with our fixes already in; the same fixes are in
+     `kos-patches/` for use on top of
+     [zig/kos-dcplaya](https://github.com/zig/kos-dcplaya) `1008d9f`)
 3. Build the KOS fork: `make` in `kos-dcplaya` with its environment set.
 4. Build DCPlaya:
 
